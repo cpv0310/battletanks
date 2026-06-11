@@ -267,7 +267,7 @@ describe('step: sensor focus', () => {
     const tooWide = step(state, intentsFor(state.tanks, { 0: { sensorArc: Math.PI * 2 } }))
     expect(tooWide.tanks[0].sensorArc).toBeCloseTo(Math.PI * 0.75)
     const tooNarrow = step(state, intentsFor(state.tanks, { 0: { sensorArc: 0.01 } }))
-    expect(tooNarrow.tanks[0].sensorArc).toBeCloseTo(Math.PI / 4)
+    expect(tooNarrow.tanks[0].sensorArc).toBeCloseTo(Math.PI / 6)
   })
 })
 

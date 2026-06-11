@@ -115,6 +115,15 @@ describe('sensor focus (arc/range tradeoff)', () => {
     expect(reading.tanks.map((t) => t.id)).toEqual([2])
   })
 
+  it('the 30-degree laser focus reaches exactly 750px', () => {
+    const sensor = makeTank({ id: 0, x: 100, y: 500, turretHeading: 0, sensorArc: Math.PI / 6 })
+    const farAhead = makeTank({ id: 1, x: 100 + 740, y: 500 })
+    const tooFar = makeTank({ id: 2, x: 100 + 760, y: 500 })
+    const offAxis = makeTank({ id: 3, x: 100 + 200, y: 500 + 80 }) // ~22 deg, outside the 15 deg half-arc
+    const reading = sense(makeState([sensor, farAhead, tooFar, offAxis]), sensor)
+    expect(reading.tanks.map((t) => t.id)).toEqual([1])
+  })
+
   it('the default arc keeps the original 90-degree, 350px sensor', () => {
     const sensor = makeTank({ id: 0, x: 300, y: 500, turretHeading: 0 })
     const inRange = makeTank({ id: 1, x: 300 + SENSOR_RANGE - 10, y: 500 })

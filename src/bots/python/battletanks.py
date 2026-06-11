@@ -111,13 +111,13 @@ class Bot:
         self._commands['fire'] = _clamp(power, 1.0, 3.0)
 
     def set_sensor(self, arc_deg):
-        """Set the sensor arc (45..135 degrees); persists until changed.
+        """Set the sensor arc (30..135 degrees); persists until changed.
 
-        Narrowing buys extra reach: 45 deg sees ~590 px, 90 deg (default)
-        350 px, 135 deg ~286 px. Narrow = sniper vision, wide = brawler
-        awareness.
+        Narrowing buys extra reach: 30 deg is a 750 px laser focus,
+        45 deg sees ~590 px, 90 deg (default) 350 px, 135 deg ~286 px.
+        Narrow = sniper vision, wide = brawler awareness.
         """
-        self._commands['sensor_arc'] = _clamp(arc_deg, 45.0, 135.0)
+        self._commands['sensor_arc'] = _clamp(arc_deg, 30.0, 135.0)
 
     def ping(self):
         """Radar ping (needs 'radar'): next tick, state.ping lists every

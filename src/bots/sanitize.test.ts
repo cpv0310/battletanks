@@ -43,6 +43,10 @@ describe('sanitizeBotOutput', () => {
   it('converts sensor_arc degrees to clamped radians', () => {
     const narrow = sanitizeBotOutput('{"sensor_arc": 45}').intents.sensorArc
     expect(narrow).toBeCloseTo(Math.PI / 4)
+    const laser = sanitizeBotOutput('{"sensor_arc": 30}').intents.sensorArc
+    expect(laser).toBeCloseTo(Math.PI / 6)
+    const tooNarrow = sanitizeBotOutput('{"sensor_arc": 5}').intents.sensorArc
+    expect(tooNarrow).toBeCloseTo(Math.PI / 6)
     const clamped = sanitizeBotOutput('{"sensor_arc": 720}').intents.sensorArc
     expect(clamped).toBeCloseTo(Math.PI * 0.75)
     expect(sanitizeBotOutput('{"sensor_arc": "wide"}').intents.sensorArc).toBeUndefined()

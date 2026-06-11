@@ -110,15 +110,16 @@ DPS is flat across powers, so the choice is tempo, not raw output.
 
 | Property | Value (default) |
 |---|---|
-| Arc | **90°**, centered on the turret heading (adjustable 45–135°) |
-| Range | 350 px at 90°; scales so swept area stays constant |
+| Arc | **90°**, centered on the turret heading (adjustable 30–135°) |
+| Range | 350 px at 90°; narrower arcs reach farther (up to 750 px at 30°) |
 | Update | every tick, automatically |
 
 - `set_sensor(arc_deg)` trades width for range (persistent until changed),
-  and narrowing buys disproportionate reach: below 90° range scales with
-  `(90/arc)^0.75`, at or above 90° with `(90/arc)^0.5`. So 45° sees ~589 px
-  (sniper beam), 90° is the 350 px default, and 135° sees ~286 px (brawler
-  awareness). `state.me.sensor_arc` / `sensor_range` report current values.
+  and narrowing buys disproportionate reach: **30° is a 750 px laser
+  focus**, 45° sees ~589 px (`(90/arc)^0.75`), 90° is the 350 px default,
+  and 135° sees ~286 px (area-constant `^0.5` above 90°). The curve is
+  continuous (30–45° blends linearly between the anchors).
+  `state.me.sensor_arc` / `sensor_range` report current values.
 
 - The sensor reports everything inside its arc and range **with unobstructed
   line of sight** (obstacles and walls block sensing; other tanks do not).
@@ -221,7 +222,7 @@ class HunterBot(Bot):
 | `self.turn_turret(r)` | set turret turn rate, `r` ∈ [-1, 1] of max |
 | `self.turn_to(deg)` / `self.turn_turret_to(deg)` | turn toward an absolute world heading (engine steers at max rate and stops there) |
 | `self.fire(power=2)` | fire if cooldown is 0 (one-shot); power 1–3 scales damage/speed/cooldown (§4.3) |
-| `self.set_sensor(arc_deg)` | set sensor arc 45–135°, trading width for range (§4.4); persistent |
+| `self.set_sensor(arc_deg)` | set sensor arc 30–135°, trading width for range (§4.4); persistent |
 | `self.ping()` / `self.shield()` / `self.boost()` | trigger loadout abilities (§4.5); no-ops without the module |
 | `self.rng` | seeded `random.Random` instance for reproducible randomness |
 
@@ -308,7 +309,7 @@ All values live in `src/config.ts` and may be rebalanced freely.
 | Forward / reverse speed | 150 / 75 px/s |
 | Hull / turret rotation | 90 / 180 °/s |
 | Shell (power p = 1–3) | damage 10p / speed 700−50p px/s / cooldown 0.5p s |
-| Sensor arc / range | 45–135° (default 90°) / 350 px at 90°, ~589 px at 45°, ~286 px at 135° |
+| Sensor arc / range | 30–135° (default 90°) / 750 px at 30°, ~589 px at 45°, 350 px at 90°, ~286 px at 135° |
 | Bot CPU budget per tick | 10 ms |
 
 ## 10. Open Questions (deferred from v1)

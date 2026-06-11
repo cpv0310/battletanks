@@ -161,6 +161,7 @@ export function defineTankBlocks(): void {
           options: [
             ['standard (90°)', '90'],
             ['narrow — sees far (45°)', '45'],
+            ['laser — sees very far (30°)', '30'],
             ['wide — sees close (135°)', '135'],
           ],
         },

@@ -64,15 +64,25 @@ export const WALL_CONTACT_EPSILON = 3
  */
 export const SENSOR_ARC = Math.PI / 2
 export const SENSOR_RANGE = 350
-export const SENSOR_MIN_ARC = Math.PI / 4
+export const SENSOR_MIN_ARC = Math.PI / 6
 export const SENSOR_MAX_ARC = Math.PI * 0.75
+/** The 30° "laser focus" floor sees exactly this far. */
+export const SENSOR_MIN_ARC_RANGE = 750
+
+const SENSOR_NARROW_ARC = Math.PI / 4
 
 /**
- * Range for a given arc. Narrowing below the default buys disproportionate
- * reach (exponent 0.75: 45° sees ~589 px); widening trades on constant
- * swept area (exponent 0.5: 135° sees ~286 px). Continuous at 90°/350 px.
+ * Range for a given arc. Narrowing buys disproportionate reach:
+ * 30° = 750 px (laser focus), 45° ≈ 589 px ((90/arc)^0.75), 90° = 350 px,
+ * 135° ≈ 286 px (area-constant ^0.5 above 90°). Piecewise but continuous:
+ * 30–45° blends linearly between the 750 px and ~589 px anchors.
  */
 export function sensorRange(arc: number): number {
+  if (arc < SENSOR_NARROW_ARC) {
+    const narrowRange = SENSOR_RANGE * Math.pow(SENSOR_ARC / SENSOR_NARROW_ARC, 0.75)
+    const t = (arc - SENSOR_MIN_ARC) / (SENSOR_NARROW_ARC - SENSOR_MIN_ARC)
+    return SENSOR_MIN_ARC_RANGE + t * (narrowRange - SENSOR_MIN_ARC_RANGE)
+  }
   const ratio = SENSOR_ARC / arc
   return SENSOR_RANGE * Math.pow(ratio, arc < SENSOR_ARC ? 0.75 : 0.5)
 }
