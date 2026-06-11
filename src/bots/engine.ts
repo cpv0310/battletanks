@@ -1,4 +1,10 @@
-import { BOT_BUDGET_MS, BOT_OVERRUN_LIMIT, TICK_RATE } from '../config'
+import {
+  BOT_BUDGET_MS,
+  BOT_OVERRUN_LIMIT,
+  TANK_RADIUS,
+  TICK_RATE,
+  WALL_CONTACT_EPSILON,
+} from '../config'
 import { createMatch, evaluateMatch, type MatchResult } from '../core/match'
 import type { MapKind } from '../core/arena'
 import { createRng } from '../core/rng'
@@ -171,6 +177,7 @@ function buildBotState(
   aliveCount: number,
 ): Record<string, unknown> {
   const events = state.events[tank.id]
+  const wallContact = nearestWallContact(tank, state)
   return {
     tick: state.tick,
     alive_count: aliveCount,
@@ -183,6 +190,9 @@ function buildBotState(
       speed: tank.speed,
       hp: tank.hp,
       cooldown: tank.cooldown / TICK_RATE,
+      stuck: tank.blocked,
+      at_wall: wallContact !== null,
+      wall_bearing: wallContact,
     },
     sensor: {
       tanks: reading.tanks.map((t) => ({
@@ -214,6 +224,29 @@ function buildBotState(
       enemies_destroyed: events.enemiesDestroyed.map((e) => ({ id: e.id })),
     },
   }
+}
+
+/**
+ * Bearing (degrees, relative to the hull heading) toward the nearest arena
+ * wall the hull is touching, or null when not in contact with any wall.
+ */
+function nearestWallContact(tank: TankState, state: SimState): number | null {
+  const walls = [
+    { distance: tank.x, angle: Math.PI },
+    { distance: state.arena.width - tank.x, angle: 0 },
+    { distance: tank.y, angle: -Math.PI / 2 },
+    { distance: state.arena.height - tank.y, angle: Math.PI / 2 },
+  ]
+  const nearest = walls.reduce((a, b) => (a.distance <= b.distance ? a : b))
+  if (nearest.distance > TANK_RADIUS + WALL_CONTACT_EPSILON) return null
+  return normalizeDegrees((nearest.angle - tank.heading) * RAD_TO_DEG)
+}
+
+function normalizeDegrees(degrees: number): number {
+  let normalized = degrees % 360
+  if (normalized > 180) normalized -= 360
+  if (normalized <= -180) normalized += 360
+  return normalized
 }
 
 function describeError(error: unknown): string {

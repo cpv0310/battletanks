@@ -31,6 +31,9 @@ export const CANNON_COOLDOWN_TICKS = TICK_RATE
 /** Shells spawn this far from the tank center, outside TANK_RADIUS. */
 export const MUZZLE_OFFSET = 26
 
+/** A hull within this many px of a wall (beyond TANK_RADIUS) counts as touching it. */
+export const WALL_CONTACT_EPSILON = 3
+
 /** Sensor: 90 degree arc centered on the turret heading. */
 export const SENSOR_ARC = Math.PI / 2
 export const SENSOR_RANGE = 350

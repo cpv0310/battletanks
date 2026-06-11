@@ -63,6 +63,26 @@ class Seeker(Bot):
         print("OUCH")
 `
 
+const WALL_ESCAPER = `
+from battletanks import Bot
+
+class Escaper(Bot):
+    def on_start(self, info):
+        self.was_at_wall = False
+
+    def on_tick(self, state):
+        me = state.me
+        if me.at_wall:
+            if not self.was_at_wall:
+                print("STUCK bearing", round(me.wall_bearing))
+            self.was_at_wall = True
+            self.turn_to(me.heading + me.wall_bearing + 180)
+        elif self.was_at_wall:
+            print("ESCAPED")
+            self.was_at_wall = False
+        self.drive(1.0)
+`
+
 let pyodide: PyodideLike
 
 beforeAll(async () => {
@@ -141,6 +161,20 @@ describe('MatchEngine with real Pyodide', () => {
     expect(totalHp).toBeLessThan(TANK_HP * 2)
     expect(logs.some((entry) => entry.kind === 'out' && entry.text.includes('OUCH'))).toBe(true)
     expect(snapshot.botStatus.every((status) => !status.crashed)).toBe(true)
+  })
+
+  it('a bot can detect it is stuck on a wall and drive away', { timeout: 120_000 }, () => {
+    const { engine, logs } = makeEngine([
+      { name: 'escaper', script: WALL_ESCAPER },
+      { name: 'bystander', script: TALKER_BOT },
+    ])
+    // Driving full speed in a straight line guarantees hitting a wall well
+    // within this window; the bot must then report contact and break free.
+    engine.advance(900)
+    const output = logs.filter((entry) => entry.botId === 0 && entry.kind === 'out')
+    expect(output.some((entry) => entry.text.includes('STUCK'))).toBe(true)
+    expect(output.some((entry) => entry.text.includes('ESCAPED'))).toBe(true)
+    expect(engine.snapshot().botStatus[0].crashed).toBe(false)
   })
 
   it('all four sample bots run a battle without crashing', { timeout: 120_000 }, () => {

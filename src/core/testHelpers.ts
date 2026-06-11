@@ -13,6 +13,7 @@ export function makeTank(overrides: Partial<TankState> & { id: number }): TankSt
     hp: TANK_HP,
     cooldown: 0,
     alive: true,
+    blocked: false,
     ...overrides,
   }
 }

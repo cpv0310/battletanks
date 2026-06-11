@@ -106,7 +106,7 @@ function applyMovement(
     const drive = clamp(intents[tank.id].drive, -1, 1)
     const speed = drive * (drive >= 0 ? TANK_FORWARD_SPEED : TANK_REVERSE_SPEED)
     if (speed === 0) {
-      positions[tank.id] = { ...positions[tank.id], speed: 0 }
+      positions[tank.id] = { ...positions[tank.id], speed: 0, blocked: false }
       continue
     }
     const current = positions[tank.id]
@@ -117,7 +117,13 @@ function applyMovement(
     }
     const resolved = resolveMove(state, positions, current, desired)
     if (resolved.collision) events[tank.id].collisions.push(resolved.collision)
-    positions[tank.id] = { ...current, x: resolved.x, y: resolved.y, speed }
+    positions[tank.id] = {
+      ...current,
+      x: resolved.x,
+      y: resolved.y,
+      speed,
+      blocked: resolved.collision !== null,
+    }
   }
   return positions
 }
@@ -281,7 +287,7 @@ function applyDeaths(tanks: ReadonlyArray<TankState>, events: MutableEvents[]): 
   const dying = tanks.filter((tank) => tank.alive && tank.hp <= 0)
   if (dying.length === 0) return [...tanks]
   const updated = tanks.map((tank) =>
-    tank.alive && tank.hp <= 0 ? { ...tank, alive: false, speed: 0 } : tank,
+    tank.alive && tank.hp <= 0 ? { ...tank, alive: false, speed: 0, blocked: false } : tank,
   )
   for (const survivor of updated) {
     if (!survivor.alive) continue

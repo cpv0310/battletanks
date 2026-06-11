@@ -93,6 +93,38 @@ describe('step: movement', () => {
     expect(next.tanks[0].y).toBeGreaterThan(500)
   })
 
+  it('sets the blocked flag while pinned against a wall and clears it when free', () => {
+    const state = makeState([makeTank({ id: 0, x: TANK_RADIUS + 1, y: 500, heading: Math.PI })])
+    const pinned = step(state, intentsFor(state.tanks, { 0: { drive: 1 } }))
+    expect(pinned.tanks[0].blocked).toBe(true)
+
+    // Still pushing into the wall next tick: stays blocked.
+    const stillPinned = step(pinned, intentsFor(pinned.tanks, { 0: { drive: 1 } }))
+    expect(stillPinned.tanks[0].blocked).toBe(true)
+
+    // Reversing away from the wall: no longer blocked.
+    const freed = step(stillPinned, intentsFor(stillPinned.tanks, { 0: { drive: -1 } }))
+    expect(freed.tanks[0].blocked).toBe(false)
+  })
+
+  it('does not set blocked when driving freely or standing still', () => {
+    const state = makeState([makeTank({ id: 0, x: 100, y: 100, blocked: true })])
+    const moving = step(state, intentsFor(state.tanks, { 0: { drive: 1 } }))
+    expect(moving.tanks[0].blocked).toBe(false)
+    const idle = step(state, intentsFor(state.tanks))
+    expect(idle.tanks[0].blocked).toBe(false)
+  })
+
+  it('sets blocked when sliding along an obstacle', () => {
+    const obstacle = { x: 200, y: 0, width: 100, height: 1000 }
+    const state = makeState(
+      [makeTank({ id: 0, x: 200 - TANK_RADIUS - 1, y: 500, heading: Math.PI / 4 })],
+      { obstacles: [obstacle] },
+    )
+    const next = step(state, intentsFor(state.tanks, { 0: { drive: 1 } }))
+    expect(next.tanks[0].blocked).toBe(true)
+  })
+
   it('is blocked by another tank', () => {
     const a = makeTank({ id: 0, x: 500, y: 500 })
     const b = makeTank({ id: 1, x: 500 + TANK_RADIUS * 2 + 1, y: 500 })

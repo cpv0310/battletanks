@@ -165,7 +165,7 @@ class HunterBot(Bot):
 | Field | Contents |
 |---|---|
 | `state.tick` | current tick number |
-| `state.me` | `x`, `y`, `heading`, `turret_heading` (world), `turret_relative` (vs hull), `speed`, `hp`, `cooldown` (seconds until cannon ready) |
+| `state.me` | `x`, `y`, `heading`, `turret_heading` (world), `turret_relative` (vs hull), `speed`, `hp`, `cooldown` (seconds until cannon ready), `stuck` (movement was obstructed last tick), `at_wall` (hull touching an arena wall), `wall_bearing` (bearing to the touched wall relative to the hull, or `None`) |
 | `state.sensor.tanks` | list of detected tanks: `id`, `distance`, `bearing`, `heading`, `speed` |
 | `state.sensor.obstacles` | list of visible obstacles: `distance`, `bearing`, `rect` |
 | `state.sensor.wall` | wall intersection along turret heading (`distance`, `bearing`) or `None` |

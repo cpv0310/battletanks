@@ -36,6 +36,7 @@ export function createMatch(playerNames: ReadonlyArray<string>, seed: number, ma
       hp: TANK_HP,
       cooldown: 0,
       alive: true,
+      blocked: false,
     }
   })
   return {

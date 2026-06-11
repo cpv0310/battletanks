@@ -8,6 +8,16 @@ changed. `fire()` is one-shot.
 Angles are in degrees (0 = right/+x, increasing clockwise on screen).
 Distances are in pixels. Speeds and turn rates are fractions of the tank's
 maximum, in [-1, 1].
+
+Knowing when you are stuck (state.me):
+  - state.me.stuck      True if the tank tried to move last tick but was
+                        obstructed (wall, obstacle, or another tank).
+  - state.me.at_wall    True while the hull is touching an arena wall.
+  - state.me.wall_bearing
+                        Bearing (degrees, relative to the hull heading) toward
+                        the touched wall, or None when not at a wall. To drive
+                        away from it:
+                            self.turn_to(state.me.heading + state.me.wall_bearing + 180)
 """
 
 

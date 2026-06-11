@@ -31,6 +31,8 @@ export interface TankState {
   /** Ticks until the cannon can fire again. */
   readonly cooldown: number
   readonly alive: boolean
+  /** True if the tank tried to move last tick but was obstructed. */
+  readonly blocked: boolean
 }
 
 export interface ShellState {
