@@ -396,6 +396,46 @@ body {
   display: none;
 }
 
+.winner-screen {
+  text-align: center;
+  animation: winner-pop 0.45s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+.winner-trophy {
+  font-size: 72px;
+  line-height: 1;
+  margin-bottom: 8px;
+}
+
+.winner-banner {
+  font-size: clamp(48px, 8vw, 96px);
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  text-shadow:
+    0 0 24px currentColor,
+    0 4px 0 rgba(0, 0, 0, 0.55);
+  margin: 0 24px;
+}
+
+.winner-subtitle {
+  color: var(--text);
+  opacity: 0.75;
+  font-size: 18px;
+  margin: 14px 0 26px;
+}
+
+@keyframes winner-pop {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
 .overlay-card {
   background: var(--panel);
   border: 1px solid var(--panel-edge);

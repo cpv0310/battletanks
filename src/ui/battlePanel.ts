@@ -140,18 +140,29 @@ export class BattlePanel {
   }
 
   showResult(result: MatchResult): void {
-    const title =
-      result.winners.length === 1
-        ? `🏆 ${this.playerNames[result.winners[0]]} wins!`
-        : result.winners.length === 0
-          ? 'Mutual destruction — draw!'
-          : `Draw between ${result.winners.map((id) => this.playerNames[id]).join(' and ')}`
+    const single = result.winners.length === 1
+    const banner = el('div', {
+      className: 'winner-banner',
+      text: single ? `${this.playerNames[result.winners[0]]} WINS!` : 'DRAW!',
+    })
+    if (single) {
+      banner.style.color = `#${(TANK_COLORS[result.winners[0]] ?? 0xffffff)
+        .toString(16)
+        .padStart(6, '0')}`
+    }
     const subtitle =
-      result.reason === 'timeout' ? 'Time limit reached — decided on HP.' : 'Last tank standing.'
+      result.winners.length === 0
+        ? 'Mutual destruction — no tank survived.'
+        : result.winners.length > 1
+          ? `${result.winners.map((id) => this.playerNames[id]).join(' and ')} tied on HP at the time limit.`
+          : result.reason === 'timeout'
+            ? 'Time limit reached — most HP remaining.'
+            : 'Last tank standing.'
     this.overlay.replaceChildren(
-      el('div', { className: 'overlay-card' }, [
-        el('h2', { text: title }),
-        el('p', { text: subtitle }),
+      el('div', { className: 'winner-screen' }, [
+        el('div', { className: 'winner-trophy', text: single ? '🏆' : '🤝' }),
+        banner,
+        el('p', { className: 'winner-subtitle', text: subtitle }),
         el('div', { className: 'row row-center' }, [
           button('Rematch (same seed)', () => this.handlers.onRematch(), 'btn btn-primary'),
           button('Back to setup', () => this.handlers.onBackToSetup()),
