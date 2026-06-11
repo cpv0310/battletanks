@@ -9,6 +9,22 @@ Angles are in degrees (0 = right/+x, increasing clockwise on screen).
 Distances are in pixels. Speeds and turn rates are fractions of the tank's
 maximum, in [-1, 1].
 
+Teams:
+  - state.me.team           Your team number, or None if playing solo.
+  - state.team              None when solo; otherwise has:
+      .id                   team number
+      .mates                teammates: each has .id, .name, .alive
+      .messages             messages from teammates (sent last tick): each has
+                            .from_id, .from_name, .tick, and .data (whatever
+                            the teammate sent)
+  - self.send_team(data)    Send JSON-serializable data (dict/list/str/number)
+                            to all living teammates; they receive it next tick.
+  - Sensor detections include .x, .y (the detected tank's position) and
+    .is_teammate — so a scout can send an enemy's location to the team:
+        for t in state.sensor.tanks:
+            if not t.is_teammate:
+                self.send_team({'enemy_x': t.x, 'enemy_y': t.y})
+
 Knowing when you are stuck (state.me):
   - state.me.stuck      True if the tank tried to move last tick but was
                         obstructed (wall, obstacle, or another tank).
@@ -19,6 +35,8 @@ Knowing when you are stuck (state.me):
                         away from it:
                             self.turn_to(state.me.heading + state.me.wall_bearing + 180)
 """
+
+import json as _json
 
 
 def _clamp(value, low, high):
@@ -59,6 +77,22 @@ class Bot:
     def fire(self):
         """Fire the cannon if it is off cooldown (one-shot, not persistent)."""
         self._commands['fire'] = True
+
+    def send_team(self, data):
+        """Send a message to all living teammates (delivered next tick).
+
+        `data` must be JSON-serializable (numbers, strings, lists, dicts).
+        Limited to 4 messages per tick; does nothing when playing solo.
+        """
+        try:
+            _json.dumps(data)
+        except (TypeError, ValueError):
+            raise ValueError(
+                'send_team data must be JSON-serializable (numbers, strings, lists, dicts)'
+            )
+        messages = self._commands.setdefault('team_messages', [])
+        if len(messages) < 4:
+            messages.append(data)
 
     # ----- event handlers (override these) --------------------------------
 

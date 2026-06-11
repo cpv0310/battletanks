@@ -322,6 +322,23 @@ body {
   white-space: nowrap;
 }
 
+.team-chip {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: #2c313b;
+  border: 1px solid #3a404d;
+  color: var(--muted);
+}
+
+.select-team {
+  width: 96px;
+  flex-shrink: 0;
+}
+
 .hp-bar {
   height: 8px;
   background: #14161a;

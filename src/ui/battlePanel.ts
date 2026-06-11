@@ -26,6 +26,7 @@ export class BattlePanel {
   private readonly statusLine: HTMLElement
   private tankCards: HTMLElement[] = []
   private playerNames: string[] = []
+  private playerTeams: (number | null)[] = []
   private consoleLines = 0
 
   constructor(handlers: BattleControls) {
@@ -64,20 +65,26 @@ export class BattlePanel {
     this.overlay = el('div', { className: 'overlay hidden' })
   }
 
-  startMatch(playerNames: ReadonlyArray<string>): void {
-    this.playerNames = [...playerNames]
+  startMatch(players: ReadonlyArray<{ name: string; team?: number | null }>): void {
+    this.playerNames = players.map((player) => player.name)
+    this.playerTeams = players.map((player) => player.team ?? null)
     this.consoleBody.replaceChildren()
     this.consoleLines = 0
     this.overlay.classList.add('hidden')
     this.setPaused(false)
     this.statusLine.textContent = ''
-    this.tankCards = playerNames.map((name, id) => {
+    this.tankCards = players.map((player, id) => {
+      const head = [
+        colorDot(id),
+        el('span', { className: 'tank-name', text: player.name }),
+      ]
+      const team = player.team ?? null
+      if (team !== null) {
+        head.push(el('span', { className: 'team-chip', text: `T${team}` }))
+      }
       const bar = el('div', { className: 'hp-bar' }, [el('div', { className: 'hp-fill' })])
       const card = el('div', { className: 'tank-card' }, [
-        el('div', { className: 'tank-card-head' }, [
-          colorDot(id),
-          el('span', { className: 'tank-name', text: name }),
-        ]),
+        el('div', { className: 'tank-card-head' }, head),
         bar,
         el('div', { className: 'tank-status', text: 'Ready' }),
       ])
@@ -140,12 +147,21 @@ export class BattlePanel {
   }
 
   showResult(result: MatchResult): void {
-    const single = result.winners.length === 1
+    const winnerTeams = new Set(result.winners.map((id) => this.playerTeams[id]))
+    const teamWin =
+      result.winners.length >= 1 && winnerTeams.size === 1 && !winnerTeams.has(null)
+    const single = result.winners.length === 1 && !teamWin
+    const winnerNames = result.winners.map((id) => this.playerNames[id]).join(' and ')
+
     const banner = el('div', {
       className: 'winner-banner',
-      text: single ? `${this.playerNames[result.winners[0]]} WINS!` : 'DRAW!',
+      text: teamWin
+        ? `TEAM ${this.playerTeams[result.winners[0]]} WINS!`
+        : single
+          ? `${this.playerNames[result.winners[0]]} WINS!`
+          : 'DRAW!',
     })
-    if (single) {
+    if (single || teamWin) {
       banner.style.color = `#${(TANK_COLORS[result.winners[0]] ?? 0xffffff)
         .toString(16)
         .padStart(6, '0')}`
@@ -153,14 +169,18 @@ export class BattlePanel {
     const subtitle =
       result.winners.length === 0
         ? 'Mutual destruction — no tank survived.'
-        : result.winners.length > 1
-          ? `${result.winners.map((id) => this.playerNames[id]).join(' and ')} tied on HP at the time limit.`
-          : result.reason === 'timeout'
-            ? 'Time limit reached — most HP remaining.'
-            : 'Last tank standing.'
+        : teamWin
+          ? result.reason === 'timeout'
+            ? `Most total HP at the time limit — ${winnerNames}.`
+            : `Last team standing — ${winnerNames}.`
+          : result.winners.length > 1
+            ? `${winnerNames} tied on HP at the time limit.`
+            : result.reason === 'timeout'
+              ? 'Time limit reached — most HP remaining.'
+              : 'Last tank standing.'
     this.overlay.replaceChildren(
       el('div', { className: 'winner-screen' }, [
-        el('div', { className: 'winner-trophy', text: single ? '🏆' : '🤝' }),
+        el('div', { className: 'winner-trophy', text: single || teamWin ? '🏆' : '🤝' }),
         banner,
         el('p', { className: 'winner-subtitle', text: subtitle }),
         el('div', { className: 'row row-center' }, [

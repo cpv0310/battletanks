@@ -92,7 +92,7 @@ beforeAll(async () => {
 }, 120_000)
 
 function makeEngine(
-  scripts: ReadonlyArray<{ name: string; script: string }>,
+  scripts: ReadonlyArray<{ name: string; script: string; team?: number | null }>,
   seed = 42,
 ): { engine: MatchEngine; logs: LogEntry[]; runtime: PythonRuntime } {
   const logs: LogEntry[] = []
@@ -192,7 +192,7 @@ describe('MatchEngine with real Pyodide', () => {
     expect(brawler.x !== 600 || brawler.y !== 500).toBe(true)
   })
 
-  it('all four sample bots run a battle without crashing', { timeout: 120_000 }, () => {
+  it('all sample bots run a battle without crashing', { timeout: 120_000 }, () => {
     const { engine } = makeEngine(
       SAMPLE_SCRIPTS.map((sample) => ({ name: sample.name, script: sample.source })),
       7,
@@ -202,6 +202,156 @@ describe('MatchEngine with real Pyodide', () => {
     expect(snapshot.botStatus.every((status) => !status.crashed && !status.inert)).toBe(true)
     if (snapshot.result === null) {
       expect(snapshot.sim.tick).toBe(900)
+    }
+  })
+})
+
+const TEAM_REPORTER = `
+import math
+from battletanks import Bot
+
+class Reporter(Bot):
+    def on_start(self, info):
+        self.cx = info.arena.width / 2
+        self.cy = info.arena.height / 2
+
+    def on_tick(self, state):
+        me = state.me
+        enemies = [t for t in state.sensor.tanks if not t.is_teammate]
+        if enemies:
+            self.send_team({'x': enemies[0].x, 'y': enemies[0].y})
+            self.drive(0.0)
+            return
+        if math.hypot(self.cx - me.x, self.cy - me.y) > 150:
+            self.turn_to(math.degrees(math.atan2(self.cy - me.y, self.cx - me.x)))
+            self.drive(1.0)
+        else:
+            self.drive(0.0)
+            self.turn_turret(1.0)
+`
+
+const TEAM_RECEIVER = `
+import math
+from battletanks import Bot
+
+class Receiver(Bot):
+    def on_start(self, info):
+        self.goal = None
+        self.reported = False
+
+    def on_tick(self, state):
+        for msg in state.team.messages:
+            self.goal = (msg.data.x, msg.data.y)
+            if not self.reported:
+                print('GOT', msg.from_name, round(msg.data.x), round(msg.data.y))
+                self.reported = True
+        if self.goal is None:
+            self.drive(0.0)
+            return
+        me = state.me
+        dx = self.goal[0] - me.x
+        dy = self.goal[1] - me.y
+        if math.hypot(dx, dy) > 100:
+            self.turn_to(math.degrees(math.atan2(dy, dx)))
+            self.drive(1.0)
+        else:
+            print('ARRIVED')
+            self.drive(0.0)
+`
+
+const CENTER_PACIFIST = `
+import math
+from battletanks import Bot
+
+class Pacifist(Bot):
+    def on_start(self, info):
+        self.cx = info.arena.width / 2
+        self.cy = info.arena.height / 2
+
+    def on_tick(self, state):
+        me = state.me
+        if math.hypot(self.cx - me.x, self.cy - me.y) > 150:
+            self.turn_to(math.degrees(math.atan2(self.cy - me.y, self.cx - me.x)))
+            self.drive(1.0)
+        else:
+            self.drive(0.0)
+`
+
+describe('team channel with real Pyodide', () => {
+  it('relays an enemy sighting and the teammate converges on it', { timeout: 120_000 }, () => {
+    const { engine, logs } = makeEngine([
+      { name: 'scout', script: TEAM_REPORTER, team: 1 },
+      { name: 'striker', script: TEAM_RECEIVER, team: 1 },
+      { name: 'prey', script: CENTER_PACIFIST, team: null },
+    ])
+    const start = engine.snapshot().sim.tanks[1]
+    engine.advance(1800)
+    const output = logs.filter((entry) => entry.botId === 1 && entry.kind === 'out')
+    // The receiver heard a report from its named teammate...
+    expect(output.some((entry) => entry.text.startsWith('GOT scout'))).toBe(true)
+    // ...and drove to the reported location.
+    expect(output.some((entry) => entry.text.includes('ARRIVED'))).toBe(true)
+    const receiver = engine.snapshot().sim.tanks[1]
+    expect(receiver.x !== start.x || receiver.y !== start.y).toBe(true)
+    expect(engine.snapshot().botStatus.every((status) => !status.crashed)).toBe(true)
+  })
+
+  it('solo tanks have no team state and send_team is a no-op', { timeout: 60_000 }, () => {
+    const SOLO_CHECK = `
+from battletanks import Bot
+
+class Solo(Bot):
+    def on_tick(self, state):
+        if state.tick == 1:
+            print('team is', state.team)
+        self.send_team({'x': 1})
+`
+    const { engine, logs } = makeEngine([
+      { name: 'solo', script: SOLO_CHECK },
+      { name: 'other', script: SOLO_CHECK },
+    ])
+    engine.advance(5)
+    expect(logs.some((entry) => entry.text === 'team is None')).toBe(true)
+    expect(engine.snapshot().botStatus.every((status) => !status.crashed)).toBe(true)
+  })
+
+  it('a team win ends the match for the whole team', { timeout: 120_000 }, () => {
+    const KILLER = `
+import math
+from battletanks import Bot
+
+class Killer(Bot):
+    def on_start(self, info):
+        self.cx = info.arena.width / 2
+        self.cy = info.arena.height / 2
+
+    def on_tick(self, state):
+        me = state.me
+        enemies = [t for t in state.sensor.tanks if not t.is_teammate]
+        if enemies:
+            t = enemies[0]
+            aim = me.turret_heading + t.bearing
+            self.turn_turret_to(aim)
+            self.turn_to(aim)
+            self.drive(1.0 if t.distance > 120 else 0.0)
+            if abs(t.bearing) < 5 and me.cooldown == 0:
+                self.fire()
+            return
+        if math.hypot(self.cx - me.x, self.cy - me.y) > 100:
+            self.turn_to(math.degrees(math.atan2(self.cy - me.y, self.cx - me.x)))
+            self.drive(1.0)
+        self.turn_turret(1.0)
+`
+    const { engine } = makeEngine([
+      { name: 'k1', script: KILLER, team: 1 },
+      { name: 'k2', script: KILLER, team: 1 },
+      { name: 'prey', script: CENTER_PACIFIST, team: null },
+    ])
+    engine.advance(10_800)
+    const result = engine.snapshot().result
+    expect(result).not.toBeNull()
+    if (result?.reason === 'last-standing') {
+      expect(result.winners).toEqual([0, 1])
     }
   })
 })

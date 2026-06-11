@@ -16,13 +16,20 @@ browser with no server required.
 
 - **Players:** 2–8 tanks per match, one script per tank. The same script may be
   loaded for multiple tanks (e.g., to test a bot against itself).
+- **Teams (optional):** each tank may join a team. Every team needs at least
+  2 tanks, so a field of *n* tanks holds at most ⌊n/2⌋ teams; solo tanks may
+  fight alongside teams. Teammates share a message channel (§6.5) but are
+  otherwise ordinary tanks: sensors detect them (flagged `is_teammate`) and
+  friendly fire is real — shells damage teammates, so aim carefully.
 - **Start:** tanks spawn at fair, well-separated positions (see §3.3), at full HP.
 - **Elimination:** a tank is destroyed when its HP reaches 0. Destroyed tanks are
   removed from the field (leaving no wreck in v1).
-- **End:** the match ends when at most one tank remains, or when the time limit
-  is reached.
-- **Time limit:** 3 minutes of simulated time. On timeout, the surviving tank
-  with the highest HP wins; equal HP is a draw between those tanks.
+- **End:** the match ends when all surviving tanks belong to one team (a solo
+  tank counts as its own team) — the surviving team wins together — or when
+  the time limit is reached.
+- **Time limit:** 3 minutes of simulated time. On timeout, the team (or solo
+  tank) with the highest **total HP** among its survivors wins; ties are a
+  draw between the tied teams.
 - **Disqualification:** a script that crashes or persistently exceeds its compute
   budget (§7.5) has its tank rendered inert (it keeps its last commands but can
   issue no new ones). It can still be destroyed normally.
@@ -165,8 +172,9 @@ class HunterBot(Bot):
 | Field | Contents |
 |---|---|
 | `state.tick` | current tick number |
-| `state.me` | `x`, `y`, `heading`, `turret_heading` (world), `turret_relative` (vs hull), `speed`, `hp`, `cooldown` (seconds until cannon ready), `stuck` (movement was obstructed last tick), `at_wall` (hull touching an arena wall), `wall_bearing` (bearing to the touched wall relative to the hull, or `None`) |
-| `state.sensor.tanks` | list of detected tanks: `id`, `distance`, `bearing`, `heading`, `speed` |
+| `state.me` | `x`, `y`, `heading`, `turret_heading` (world), `turret_relative` (vs hull), `speed`, `hp`, `cooldown` (seconds until cannon ready), `stuck` (movement was obstructed last tick), `at_wall` (hull touching an arena wall), `wall_bearing` (bearing to the touched wall relative to the hull, or `None`), `team` (team number or `None`) |
+| `state.team` | `None` for solo tanks; otherwise `id`, `mates` (each: `id`, `name`, `alive`), and `messages` received from teammates (each: `from_id`, `from_name`, `tick`, `data`) |
+| `state.sensor.tanks` | list of detected tanks: `id`, `x`, `y`, `is_teammate`, `distance`, `bearing`, `heading`, `speed` |
 | `state.sensor.obstacles` | list of visible obstacles: `distance`, `bearing`, `rect` |
 | `state.sensor.wall` | wall intersection along turret heading (`distance`, `bearing`) or `None` |
 | `state.events` | events since last tick: `hit_by_shell`, `shell_hit_enemy`, `collision`, `enemy_destroyed` |
@@ -195,7 +203,17 @@ the tank's maximum. Invalid values are clamped, never errors.
 - `on_detected_tank(detection)` — a tank newly entered the sensor arc.
 - `on_destroyed()` — own tank eliminated (for cleanup/learning, no commands).
 
-### 6.5 Constraints & sandboxing
+### 6.5 Team channel
+
+- `self.send_team(data)` broadcasts a JSON-serializable payload to all living
+  teammates; it arrives in their `state.team.messages` **on the next tick**.
+- Limits: 4 messages per bot per tick, 512 bytes serialized each (over-limit
+  messages are silently dropped). `send_team` is a no-op for solo tanks.
+- The canonical play: a scout that spots an enemy sends
+  `{'x': t.x, 'y': t.y}`; teammates programmed to listen converge on the
+  reported position (see the **Team Hunter** sample bot).
+
+### 6.6 Constraints & sandboxing
 
 - Scripts run in **Pyodide** (CPython compiled to WebAssembly) inside a Web
   Worker — no network, filesystem, or DOM access. Imports limited to the Python

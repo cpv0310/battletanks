@@ -45,6 +45,10 @@ export const SPAWN_OBSTACLE_CLEARANCE = 80
 export const BOT_BUDGET_MS = 10
 export const BOT_OVERRUN_LIMIT = 120
 
+/** Team channel limits: messages per bot per tick and serialized size each. */
+export const MAX_TEAM_MESSAGES_PER_TICK = 4
+export const MAX_TEAM_MESSAGE_BYTES = 512
+
 export const TANK_COLORS = [
   0x4caf50, 0xef5350, 0x42a5f5, 0xffca28, 0xab47bc, 0x26c6da, 0xff7043, 0xd4e157,
 ] as const

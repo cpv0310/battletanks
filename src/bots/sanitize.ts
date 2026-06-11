@@ -1,31 +1,57 @@
+import { MAX_TEAM_MESSAGES_PER_TICK, MAX_TEAM_MESSAGE_BYTES } from '../config'
 import type { TankIntents, TurnCommand } from '../core/types'
 import { clamp } from '../core/geometry'
 
 const DEG_TO_RAD = Math.PI / 180
 
+export interface BotOutput {
+  readonly intents: Partial<TankIntents>
+  readonly teamMessages: ReadonlyArray<unknown>
+}
+
+const EMPTY_OUTPUT: BotOutput = { intents: {}, teamMessages: [] }
+
 /**
  * Validate and convert a bot's raw command JSON (degrees, snake_case) into
- * engine intents (radians, clamped). Untrusted input: anything malformed is
- * dropped rather than thrown, so a buggy bot only loses that command.
+ * engine intents (radians, clamped) plus capped team messages. Untrusted
+ * input: anything malformed is dropped rather than thrown, so a buggy bot
+ * only loses that command.
  */
-export function sanitizeCommands(rawJson: string): Partial<TankIntents> {
+export function sanitizeBotOutput(rawJson: string): BotOutput {
   let raw: unknown
   try {
     raw = JSON.parse(rawJson)
   } catch {
-    return {}
+    return EMPTY_OUTPUT
   }
-  if (typeof raw !== 'object' || raw === null) return {}
+  if (typeof raw !== 'object' || raw === null) return EMPTY_OUTPUT
   const record = raw as Record<string, unknown>
 
-  const result: { -readonly [K in keyof TankIntents]?: TankIntents[K] } = {}
-  if (isFiniteNumber(record.drive)) result.drive = clamp(record.drive, -1, 1)
+  const intents: { -readonly [K in keyof TankIntents]?: TankIntents[K] } = {}
+  if (isFiniteNumber(record.drive)) intents.drive = clamp(record.drive, -1, 1)
   const turn = parseTurn(record.turn)
-  if (turn) result.turn = turn
+  if (turn) intents.turn = turn
   const turretTurn = parseTurn(record.turret_turn)
-  if (turretTurn) result.turretTurn = turretTurn
-  if (record.fire === true) result.fire = true
-  return result
+  if (turretTurn) intents.turretTurn = turretTurn
+  if (record.fire === true) intents.fire = true
+
+  return { intents, teamMessages: parseTeamMessages(record.team_messages) }
+}
+
+function parseTeamMessages(value: unknown): unknown[] {
+  if (!Array.isArray(value)) return []
+  const messages: unknown[] = []
+  for (const message of value) {
+    if (messages.length >= MAX_TEAM_MESSAGES_PER_TICK) break
+    try {
+      if (JSON.stringify(message).length <= MAX_TEAM_MESSAGE_BYTES) {
+        messages.push(message)
+      }
+    } catch {
+      // unserializable message: drop it
+    }
+  }
+  return messages
 }
 
 function parseTurn(value: unknown): TurnCommand | null {

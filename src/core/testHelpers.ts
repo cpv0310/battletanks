@@ -5,6 +5,7 @@ import { IDLE_INTENTS } from './types'
 export function makeTank(overrides: Partial<TankState> & { id: number }): TankState {
   return {
     name: `tank-${overrides.id}`,
+    team: null,
     x: 600,
     y: 500,
     heading: 0,

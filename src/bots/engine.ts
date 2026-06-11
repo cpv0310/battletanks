@@ -18,7 +18,13 @@ import {
   type TankState,
 } from '../core/types'
 import type { BotStatus, LogEntry, PlayerConfig, Snapshot } from './protocol'
-import { sanitizeCommands } from './sanitize'
+import { sanitizeBotOutput } from './sanitize'
+
+interface TeamMessage {
+  readonly fromId: number
+  readonly tick: number
+  readonly data: unknown
+}
 
 /** The Python calls the engine needs; implemented over Pyodide. */
 export interface PythonRuntime {
@@ -48,6 +54,10 @@ export class MatchEngine {
   private intents: TankIntents[]
   private botStatus: MutableBotStatus[]
   private matchResult: MatchResult | null = null
+  /** Team messages awaiting delivery on the next tick, per recipient. */
+  private mailbox: TeamMessage[][]
+  /** Messages being delivered to each tank during the current tick. */
+  private inbox: TeamMessage[][]
 
   constructor(
     runtime: PythonRuntime,
@@ -58,9 +68,15 @@ export class MatchEngine {
   ) {
     this.runtime = runtime
     this.log = log
-    this.sim = createMatch(players.map((player) => player.name), seed, map)
+    this.sim = createMatch(
+      players.map((player) => ({ name: player.name, team: player.team ?? null })),
+      seed,
+      map,
+    )
     this.intents = this.sim.tanks.map(() => IDLE_INTENTS)
     this.botStatus = this.sim.tanks.map(() => ({ inert: false, crashed: false, overruns: 0 }))
+    this.mailbox = this.sim.tanks.map(() => [])
+    this.inbox = this.sim.tanks.map(() => [])
     this.tickOrder = createRng(seed ^ 0x5f3759df).shuffle(this.sim.tanks.map((tank) => tank.id))
 
     for (const tank of this.sim.tanks) {
@@ -70,6 +86,7 @@ export class MatchEngine {
           name: tank.name,
           arena: { width: this.sim.arena.width, height: this.sim.arena.height },
           match_players: this.sim.tanks.length,
+          team: tank.team,
         }))
       } catch (error) {
         this.botStatus[tank.id] = { inert: true, crashed: true, overruns: 0 }
@@ -101,6 +118,10 @@ export class MatchEngine {
     const readings = senseAll(this.sim)
     const aliveCount = this.sim.tanks.filter((tank) => tank.alive).length
 
+    // Messages sent last tick are delivered this tick.
+    this.inbox = this.mailbox
+    this.mailbox = this.sim.tanks.map(() => [])
+
     // fire() is one-shot: cleared every tick before bots run.
     this.intents = this.intents.map((intent) => ({ ...intent, fire: false }))
 
@@ -122,12 +143,15 @@ export class MatchEngine {
     reading: SensorReading,
     aliveCount: number,
   ): void {
-    const stateJson = JSON.stringify(buildBotState(this.sim, tank, reading, aliveCount))
+    const stateJson = JSON.stringify(
+      buildBotState(this.sim, tank, reading, aliveCount, this.inbox[botId]),
+    )
     const started = performance.now()
     try {
       const raw = this.runtime.tickBot(botId, stateJson)
-      const commands = sanitizeCommands(typeof raw === 'string' ? raw : '{}')
-      this.intents[botId] = { ...this.intents[botId], ...commands }
+      const output = sanitizeBotOutput(typeof raw === 'string' ? raw : '{}')
+      this.intents[botId] = { ...this.intents[botId], ...output.intents }
+      this.routeTeamMessages(tank, output.teamMessages)
     } catch (error) {
       this.botStatus[botId] = { ...this.botStatus[botId], inert: true, crashed: true }
       this.log({ botId, text: describeError(error), kind: 'err' })
@@ -135,6 +159,17 @@ export class MatchEngine {
       return
     }
     this.trackBudget(botId, performance.now() - started)
+  }
+
+  /** Queue messages for every living teammate; delivered next tick. */
+  private routeTeamMessages(sender: TankState, messages: ReadonlyArray<unknown>): void {
+    if (sender.team === null || messages.length === 0) return
+    for (const mate of this.sim.tanks) {
+      if (mate.id === sender.id || mate.team !== sender.team || !mate.alive) continue
+      for (const data of messages) {
+        this.mailbox[mate.id].push({ fromId: sender.id, tick: this.sim.tick, data })
+      }
+    }
   }
 
   private trackBudget(botId: number, elapsedMs: number): void {
@@ -175,6 +210,7 @@ function buildBotState(
   tank: TankState,
   reading: SensorReading,
   aliveCount: number,
+  inbox: ReadonlyArray<TeamMessage>,
 ): Record<string, unknown> {
   const events = state.events[tank.id]
   const wallContact = nearestWallContact(tank, state)
@@ -193,15 +229,23 @@ function buildBotState(
       stuck: tank.blocked,
       at_wall: wallContact !== null,
       wall_bearing: wallContact,
+      team: tank.team,
     },
+    team: buildTeamState(state, tank, inbox),
     sensor: {
-      tanks: reading.tanks.map((t) => ({
-        id: t.id,
-        distance: t.distance,
-        bearing: t.bearing * RAD_TO_DEG,
-        heading: t.heading * RAD_TO_DEG,
-        speed: t.speed,
-      })),
+      tanks: reading.tanks.map((t) => {
+        const target = state.tanks[t.id]
+        return {
+          id: t.id,
+          x: target.x,
+          y: target.y,
+          is_teammate: tank.team !== null && target.team === tank.team,
+          distance: t.distance,
+          bearing: t.bearing * RAD_TO_DEG,
+          heading: t.heading * RAD_TO_DEG,
+          speed: t.speed,
+        }
+      }),
       obstacles: reading.obstacles.map((o) => ({
         distance: o.distance,
         bearing: o.bearing * RAD_TO_DEG,
@@ -223,6 +267,26 @@ function buildBotState(
       })),
       enemies_destroyed: events.enemiesDestroyed.map((e) => ({ id: e.id })),
     },
+  }
+}
+
+function buildTeamState(
+  state: SimState,
+  tank: TankState,
+  inbox: ReadonlyArray<TeamMessage>,
+): Record<string, unknown> | null {
+  if (tank.team === null) return null
+  return {
+    id: tank.team,
+    mates: state.tanks
+      .filter((mate) => mate.team === tank.team && mate.id !== tank.id)
+      .map((mate) => ({ id: mate.id, name: mate.name, alive: mate.alive })),
+    messages: inbox.map((message) => ({
+      from_id: message.fromId,
+      from_name: state.tanks[message.fromId]?.name ?? `bot ${message.fromId}`,
+      tick: message.tick,
+      data: message.data,
+    })),
   }
 }
 

@@ -81,9 +81,8 @@ export class App {
     this.paused = false
     this.setMode('battle')
 
-    const names = setup.players.map((player) => player.name)
-    this.battlePanel.startMatch(names)
-    this.scene.resetMatch(names)
+    this.battlePanel.startMatch(setup.players)
+    this.scene.resetMatch(setup.players)
     this.battlePanel.showStatus('Starting…')
 
     this.worker = new MatchWorker({

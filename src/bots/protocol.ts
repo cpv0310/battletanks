@@ -5,6 +5,8 @@ import type { SimState } from '../core/types'
 export interface PlayerConfig {
   readonly name: string
   readonly script: string
+  /** Team number; null or omitted for a solo tank. */
+  readonly team?: number | null
 }
 
 export interface BotStatus {

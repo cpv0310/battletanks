@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { sanitizeCommands } from './sanitize'
+import { sanitizeBotOutput } from './sanitize'
 
-describe('sanitizeCommands', () => {
+describe('sanitizeBotOutput', () => {
   it('parses a full valid command set, converting degrees to radians', () => {
-    const result = sanitizeCommands(
+    const { intents, teamMessages } = sanitizeBotOutput(
       JSON.stringify({
         drive: 0.5,
         turn: { kind: 'rate', value: -0.3 },
@@ -11,29 +11,30 @@ describe('sanitizeCommands', () => {
         fire: true,
       }),
     )
-    expect(result.drive).toBe(0.5)
-    expect(result.turn).toEqual({ kind: 'rate', value: -0.3 })
-    expect(result.turretTurn?.kind).toBe('to')
-    expect(result.turretTurn?.kind === 'to' && result.turretTurn.target).toBeCloseTo(Math.PI / 2)
-    expect(result.fire).toBe(true)
+    expect(intents.drive).toBe(0.5)
+    expect(intents.turn).toEqual({ kind: 'rate', value: -0.3 })
+    expect(intents.turretTurn?.kind).toBe('to')
+    expect(intents.turretTurn?.kind === 'to' && intents.turretTurn.target).toBeCloseTo(Math.PI / 2)
+    expect(intents.fire).toBe(true)
+    expect(teamMessages).toEqual([])
   })
 
-  it('returns an empty object for invalid JSON', () => {
-    expect(sanitizeCommands('not json')).toEqual({})
-    expect(sanitizeCommands('null')).toEqual({})
-    expect(sanitizeCommands('42')).toEqual({})
+  it('returns empty output for invalid JSON', () => {
+    expect(sanitizeBotOutput('not json')).toEqual({ intents: {}, teamMessages: [] })
+    expect(sanitizeBotOutput('null')).toEqual({ intents: {}, teamMessages: [] })
+    expect(sanitizeBotOutput('42')).toEqual({ intents: {}, teamMessages: [] })
   })
 
   it('clamps out-of-range values', () => {
-    const result = sanitizeCommands(
+    const { intents } = sanitizeBotOutput(
       JSON.stringify({ drive: 99, turn: { kind: 'rate', value: -99 } }),
     )
-    expect(result.drive).toBe(1)
-    expect(result.turn).toEqual({ kind: 'rate', value: -1 })
+    expect(intents.drive).toBe(1)
+    expect(intents.turn).toEqual({ kind: 'rate', value: -1 })
   })
 
   it('drops malformed fields without dropping valid ones', () => {
-    const result = sanitizeCommands(
+    const { intents } = sanitizeBotOutput(
       JSON.stringify({
         drive: 'fast',
         turn: { kind: 'rate', value: 'spin' },
@@ -41,19 +42,34 @@ describe('sanitizeCommands', () => {
         fire: 'yes',
       }),
     )
-    expect(result.drive).toBeUndefined()
-    expect(result.turn).toBeUndefined()
-    expect(result.fire).toBeUndefined()
-    expect(result.turretTurn?.kind).toBe('to')
+    expect(intents.drive).toBeUndefined()
+    expect(intents.turn).toBeUndefined()
+    expect(intents.fire).toBeUndefined()
+    expect(intents.turretTurn?.kind).toBe('to')
   })
 
   it('rejects non-finite numbers', () => {
-    expect(sanitizeCommands('{"drive": null}')).toEqual({})
-    const result = sanitizeCommands('{"turn": {"kind": "to"}}')
-    expect(result.turn).toBeUndefined()
+    expect(sanitizeBotOutput('{"drive": null}').intents).toEqual({})
+    expect(sanitizeBotOutput('{"turn": {"kind": "to"}}').intents.turn).toBeUndefined()
   })
 
-  it('returns empty for an empty command dict', () => {
-    expect(sanitizeCommands('{}')).toEqual({})
+  it('passes through team messages of any JSON shape', () => {
+    const { teamMessages } = sanitizeBotOutput(
+      JSON.stringify({ team_messages: [{ x: 100, y: 200 }, 'fall back', 42] }),
+    )
+    expect(teamMessages).toEqual([{ x: 100, y: 200 }, 'fall back', 42])
+  })
+
+  it('caps team messages per tick and drops oversized ones', () => {
+    const { teamMessages } = sanitizeBotOutput(
+      JSON.stringify({
+        team_messages: ['a'.repeat(600), 1, 2, 3, 4, 5, 6],
+      }),
+    )
+    expect(teamMessages).toEqual([1, 2, 3, 4])
+  })
+
+  it('ignores a non-array team_messages field', () => {
+    expect(sanitizeBotOutput('{"team_messages": "hi"}').teamMessages).toEqual([])
   })
 })

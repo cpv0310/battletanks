@@ -36,18 +36,20 @@ export class BattleScene extends Phaser.Scene {
     this.graphics = this.add.graphics()
   }
 
-  resetMatch(playerNames: ReadonlyArray<string>): void {
+  resetMatch(players: ReadonlyArray<{ name: string; team?: number | null }>): void {
     this.snapshot = null
     for (const label of this.labels) label.destroy()
-    this.labels = playerNames.map((name) =>
-      this.add
-        .text(0, 0, name, {
+    this.labels = players.map((player) => {
+      const team = player.team ?? null
+      const text = team === null ? player.name : `[T${team}] ${player.name}`
+      return this.add
+        .text(0, 0, text, {
           fontFamily: 'monospace',
           fontSize: '13px',
           color: '#e8eaf0',
         })
-        .setOrigin(0.5, 1),
-    )
+        .setOrigin(0.5, 1)
+    })
   }
 
   setSnapshot(snapshot: Snapshot): void {

@@ -19,6 +19,8 @@ export interface ArenaState {
 export interface TankState {
   readonly id: number
   readonly name: string
+  /** Team number, or null for a solo tank. */
+  readonly team: number | null
   readonly x: number
   readonly y: number
   /** Hull heading in radians, world coordinates. */

@@ -20,6 +20,7 @@ interface LibraryEntry {
 interface PlayerRow {
   name: string
   scriptId: string
+  team: number | null
 }
 
 export interface MatchSetup {
@@ -61,8 +62,8 @@ export class SetupPanel {
     this.reloadLibrary()
     this.selectedId = this.library[0].id
     this.players = [
-      { name: 'Player 1', scriptId: this.library[0].id },
-      { name: 'Player 2', scriptId: this.library[1 % this.library.length].id },
+      { name: 'Player 1', scriptId: this.library[0].id, team: null },
+      { name: 'Player 2', scriptId: this.library[1 % this.library.length].id, team: null },
     ]
     this.root = this.build()
     this.refresh()
@@ -263,6 +264,16 @@ export class SetupPanel {
         player.scriptId = scriptSelect.value
       })
 
+      const teamSelect = el('select', { className: 'select select-team' })
+      teamSelect.append(option('none', 'No team'))
+      for (let team = 1; team <= MAX_PLAYERS / 2; team++) {
+        teamSelect.append(option(String(team), `Team ${team}`))
+      }
+      teamSelect.value = player.team === null ? 'none' : String(player.team)
+      teamSelect.addEventListener('change', () => {
+        player.team = teamSelect.value === 'none' ? null : Number(teamSelect.value)
+      })
+
       const remove = button('✕', () => {
         this.players.splice(index, 1)
         this.renderPlayers()
@@ -270,7 +281,7 @@ export class SetupPanel {
       remove.disabled = this.players.length <= MIN_PLAYERS
 
       this.playersContainer.append(
-        el('div', { className: 'player-row' }, [swatch, nameInput, scriptSelect, remove]),
+        el('div', { className: 'player-row' }, [swatch, nameInput, scriptSelect, teamSelect, remove]),
       )
     })
     this.addPlayerButton.disabled = this.players.length >= MAX_PLAYERS
@@ -282,6 +293,7 @@ export class SetupPanel {
     this.players.push({
       name: `Player ${index + 1}`,
       scriptId: this.library[index % this.library.length].id,
+      team: null,
     })
     this.renderPlayers()
   }
@@ -327,7 +339,12 @@ export class SetupPanel {
         this.showError('Every player needs a name.')
         return
       }
-      players.push({ name, script: entry.source })
+      players.push({ name, script: entry.source, team: player.team })
+    }
+    const teamError = validateTeams(this.players.map((player) => player.team))
+    if (teamError) {
+      this.showError(teamError)
+      return
     }
     const seed = Number.parseInt(this.seedInput.value, 10)
     if (!Number.isFinite(seed)) {
@@ -341,6 +358,23 @@ export class SetupPanel {
   private showError(message: string): void {
     this.errorLine.textContent = message
   }
+}
+
+/**
+ * Teams need at least 2 tanks each, which also guarantees at most
+ * floor(n / 2) teams on a field of n tanks. Returns an error message or null.
+ */
+function validateTeams(teams: ReadonlyArray<number | null>): string | null {
+  const counts = new Map<number, number>()
+  for (const team of teams) {
+    if (team !== null) counts.set(team, (counts.get(team) ?? 0) + 1)
+  }
+  for (const [team, count] of counts) {
+    if (count < 2) {
+      return `Team ${team} has only one tank — teams need at least 2 members (or set the player to No team).`
+    }
+  }
+  return null
 }
 
 function entryLabel(entry: LibraryEntry): string {

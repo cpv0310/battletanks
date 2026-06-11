@@ -4,15 +4,20 @@ import { createMatch, evaluateMatch } from './match'
 import { circleIntersectsRect, distance } from './geometry'
 import { makeState, makeTank } from './testHelpers'
 
+function players(...specs: ReadonlyArray<string | [string, number | null]>) {
+  return specs.map((spec) =>
+    typeof spec === 'string' ? { name: spec, team: null } : { name: spec[0], team: spec[1] },
+  )
+}
+
 describe('createMatch', () => {
   it('rejects invalid player counts', () => {
-    expect(() => createMatch(['solo'], 1, 'open')).toThrow()
-    expect(() => createMatch(Array(9).fill('p'), 1, 'open')).toThrow()
+    expect(() => createMatch(players('solo'), 1, 'open')).toThrow()
+    expect(() => createMatch(players(...Array(9).fill('p')), 1, 'open')).toThrow()
   })
 
   it('creates a tank per player at full hp on distinct spawns', () => {
-    const names = ['a', 'b', 'c', 'd']
-    const state = createMatch(names, 7, 'pillars')
+    const state = createMatch(players('a', 'b', 'c', 'd'), 7, 'pillars')
     expect(state.tanks).toHaveLength(4)
     for (const tank of state.tanks) {
       expect(tank.hp).toBe(TANK_HP)
@@ -29,15 +34,20 @@ describe('createMatch', () => {
     }
   })
 
+  it('assigns teams to tanks', () => {
+    const state = createMatch(players(['a', 1], ['b', 1], 'c'), 3, 'open')
+    expect(state.tanks.map((tank) => tank.team)).toEqual([1, 1, null])
+  })
+
   it('is deterministic for the same seed', () => {
-    const a = createMatch(['a', 'b', 'c'], 42, 'scatter')
-    const b = createMatch(['a', 'b', 'c'], 42, 'scatter')
+    const a = createMatch(players('a', 'b', 'c'), 42, 'scatter')
+    const b = createMatch(players('a', 'b', 'c'), 42, 'scatter')
     expect(a).toEqual(b)
   })
 
   it('differs across seeds', () => {
-    const a = createMatch(['a', 'b'], 1, 'open')
-    const b = createMatch(['a', 'b'], 2, 'open')
+    const a = createMatch(players('a', 'b'), 1, 'open')
+    const b = createMatch(players('a', 'b'), 2, 'open')
     expect(a.tanks.map((t) => ({ x: t.x, y: t.y, h: t.heading }))).not.toEqual(
       b.tanks.map((t) => ({ x: t.x, y: t.y, h: t.heading })),
     )
@@ -84,5 +94,59 @@ describe('evaluateMatch', () => {
       { tick: MATCH_TIME_LIMIT_TICKS },
     )
     expect(evaluateMatch(state)).toEqual({ winners: [0, 1], reason: 'timeout' })
+  })
+})
+
+describe('evaluateMatch with teams', () => {
+  it('keeps running while two teammates and an enemy live', () => {
+    const state = makeState([
+      makeTank({ id: 0, team: 1 }),
+      makeTank({ id: 1, x: 200, y: 200, team: 1 }),
+      makeTank({ id: 2, x: 900, y: 200 }),
+    ])
+    expect(evaluateMatch(state)).toBeNull()
+  })
+
+  it('declares the surviving team the winner together', () => {
+    const state = makeState([
+      makeTank({ id: 0, team: 1 }),
+      makeTank({ id: 1, x: 200, y: 200, team: 1 }),
+      makeTank({ id: 2, x: 900, y: 200, alive: false, hp: 0 }),
+    ])
+    expect(evaluateMatch(state)).toEqual({ winners: [0, 1], reason: 'last-standing' })
+  })
+
+  it('a team with one survivor still wins as a team', () => {
+    const state = makeState([
+      makeTank({ id: 0, team: 1, alive: false, hp: 0 }),
+      makeTank({ id: 1, x: 200, y: 200, team: 1 }),
+      makeTank({ id: 2, x: 900, y: 200, team: 2, alive: false, hp: 0 }),
+      makeTank({ id: 3, x: 900, y: 800, team: 2, alive: false, hp: 0 }),
+    ])
+    expect(evaluateMatch(state)).toEqual({ winners: [1], reason: 'last-standing' })
+  })
+
+  it('on timeout the team with the highest total hp wins', () => {
+    const state = makeState(
+      [
+        makeTank({ id: 0, team: 1, hp: 40 }),
+        makeTank({ id: 1, x: 200, y: 200, team: 1, hp: 40 }),
+        makeTank({ id: 2, x: 900, y: 200, hp: 70 }),
+      ],
+      { tick: MATCH_TIME_LIMIT_TICKS },
+    )
+    expect(evaluateMatch(state)).toEqual({ winners: [0, 1], reason: 'timeout' })
+  })
+
+  it('solo tanks count as their own team on timeout', () => {
+    const state = makeState(
+      [
+        makeTank({ id: 0, team: 1, hp: 30 }),
+        makeTank({ id: 1, x: 200, y: 200, team: 1, hp: 30 }),
+        makeTank({ id: 2, x: 900, y: 200, hp: 80 }),
+      ],
+      { tick: MATCH_TIME_LIMIT_TICKS },
+    )
+    expect(evaluateMatch(state)).toEqual({ winners: [2], reason: 'timeout' })
   })
 })
