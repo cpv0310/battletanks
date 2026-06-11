@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-BattleTanks is a web-based tank game played in the browser, built with TypeScript, Phaser 4, and Vite.
+BattleTanks is a browser-based programming game: 2–8 tanks battle in a 1200×1000 arena, each controlled by a player-written Python script (run via Pyodide). Last tank alive wins. The full game design is in **`docs/SPEC.md`** — read it before implementing gameplay features.
 
 ## Commands
 
