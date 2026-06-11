@@ -1,14 +1,18 @@
 import {
-  CANNON_COOLDOWN_TICKS,
   HULL_ROTATION_SPEED,
+  MAX_FIRE_POWER,
+  MIN_FIRE_POWER,
   MUZZLE_OFFSET,
-  SHELL_DAMAGE,
-  SHELL_SPEED,
+  SENSOR_MAX_ARC,
+  SENSOR_MIN_ARC,
   TANK_FORWARD_SPEED,
   TANK_RADIUS,
   TANK_REVERSE_SPEED,
   TICK_SECONDS,
   TURRET_ROTATION_SPEED,
+  cannonCooldownTicks,
+  shellDamage,
+  shellSpeed,
 } from '../config'
 import type {
   CollisionEvent,
@@ -91,7 +95,8 @@ function applyRotation(tank: TankState, intents: TankIntents): TankState {
     intents.turretTurn.kind === 'to'
       ? stepAngleToward(carried, intents.turretTurn.target, TURRET_ROTATION_SPEED * TICK_SECONDS)
       : normalizeAngle(carried + turretDelta)
-  return { ...tank, heading, turretHeading }
+  const sensorArc = clamp(intents.sensorArc, SENSOR_MIN_ARC, SENSOR_MAX_ARC)
+  return { ...tank, heading, turretHeading, sensorArc }
 }
 
 function applyMovement(
@@ -195,7 +200,8 @@ function applyFiring(
   const updated = tanks.map((tank) => {
     if (!tank.alive) return tank
     const cooldown = Math.max(0, tank.cooldown - 1)
-    if (intents[tank.id].fire && cooldown === 0) {
+    if (intents[tank.id].fire > 0 && cooldown === 0) {
+      const power = clamp(intents[tank.id].fire, MIN_FIRE_POWER, MAX_FIRE_POWER)
       const muzzle = velocityFromAngle(tank.turretHeading, MUZZLE_OFFSET)
       shells.push({
         id: shellId++,
@@ -203,8 +209,9 @@ function applyFiring(
         x: tank.x + muzzle.x,
         y: tank.y + muzzle.y,
         heading: tank.turretHeading,
+        power,
       })
-      return { ...tank, cooldown: CANNON_COOLDOWN_TICKS }
+      return { ...tank, cooldown: cannonCooldownTicks(power) }
     }
     return { ...tank, cooldown }
   })
@@ -226,7 +233,7 @@ function moveShells(
   const surviving: ShellState[] = []
 
   for (const shell of shells) {
-    const travel = velocityFromAngle(shell.heading, SHELL_SPEED * TICK_SECONDS)
+    const travel = velocityFromAngle(shell.heading, shellSpeed(shell.power) * TICK_SECONDS)
     const from = { x: shell.x, y: shell.y }
     const to = { x: shell.x + travel.x, y: shell.y + travel.y }
     const hit = firstHit(state, tanks, shell, from, to)
@@ -236,10 +243,11 @@ function moveShells(
       continue
     }
     if (hit.kind === 'tank') {
-      damage.set(hit.targetId, (damage.get(hit.targetId) ?? 0) + SHELL_DAMAGE)
+      const dealt = shellDamage(shell.power)
+      damage.set(hit.targetId, (damage.get(hit.targetId) ?? 0) + dealt)
       const target = tanks[hit.targetId]
       events[hit.targetId].hitByShell.push({
-        damage: SHELL_DAMAGE,
+        damage: dealt,
         bearing: relativeAngle(target.heading, angleBetween(target, from)),
       })
       if (tanks[shell.ownerId]?.alive) {

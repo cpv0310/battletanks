@@ -133,11 +133,42 @@ export function defineTankBlocks(): void {
     },
     {
       type: 'action_fire',
-      message0: 'fire!',
+      message0: 'fire %1 shell!',
+      args0: [
+        {
+          type: 'field_dropdown',
+          name: 'POWER',
+          options: [
+            ['a standard', '2'],
+            ['a light (fast)', '1'],
+            ['a heavy (slow)', '3'],
+          ],
+        },
+      ],
       previousStatement: null,
       nextStatement: null,
       colour: 0,
-      tooltip: 'Fire the cannon if it is ready.',
+      tooltip:
+        'Fire if the cannon is ready. Light: 10 damage, fast, quick reload. Heavy: 30 damage, slow shell, long reload.',
+    },
+    {
+      type: 'action_sensor',
+      message0: 'set sensor to %1',
+      args0: [
+        {
+          type: 'field_dropdown',
+          name: 'MODE',
+          options: [
+            ['standard (90°)', '90'],
+            ['narrow — sees far (45°)', '45'],
+            ['wide — sees close (135°)', '135'],
+          ],
+        },
+      ],
+      previousStatement: null,
+      nextStatement: null,
+      colour: ACTION_COLOUR,
+      tooltip: 'Trade sensor width for range. Stays until changed.',
     },
     {
       type: 'action_say',
@@ -242,6 +273,7 @@ export const TANK_TOOLBOX = {
         { kind: 'block', type: 'action_aim_target' },
         { kind: 'block', type: 'action_chase' },
         { kind: 'block', type: 'action_fire' },
+        { kind: 'block', type: 'action_sensor' },
         { kind: 'block', type: 'action_say' },
       ],
     },

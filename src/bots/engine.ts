@@ -4,6 +4,7 @@ import {
   TANK_RADIUS,
   TICK_RATE,
   WALL_CONTACT_EPSILON,
+  sensorRange,
 } from '../config'
 import { createMatch, evaluateMatch, type MatchResult } from '../core/match'
 import type { MapKind } from '../core/arena'
@@ -123,7 +124,7 @@ export class MatchEngine {
     this.mailbox = this.sim.tanks.map(() => [])
 
     // fire() is one-shot: cleared every tick before bots run.
-    this.intents = this.intents.map((intent) => ({ ...intent, fire: false }))
+    this.intents = this.intents.map((intent) => ({ ...intent, fire: 0 }))
 
     for (const botId of this.tickOrder) {
       const tank = this.sim.tanks[botId]
@@ -230,6 +231,8 @@ function buildBotState(
       at_wall: wallContact !== null,
       wall_bearing: wallContact,
       team: tank.team,
+      sensor_arc: tank.sensorArc * RAD_TO_DEG,
+      sensor_range: sensorRange(tank.sensorArc),
     },
     team: buildTeamState(state, tank, inbox),
     sensor: {

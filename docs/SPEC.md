@@ -86,27 +86,38 @@ Each tank has two independently rotating parts: the **hull** and the **turret**.
 - Turret heading is tracked in world coordinates; the API exposes both world
   heading and heading relative to the hull.
 
-### 4.3 Cannon
+### 4.3 Cannon — variable fire power
 
-| Property | Value (default) |
-|---|---|
-| Shell speed | 600 px/s |
-| Shell damage | 20 |
-| Cooldown | 1.0 s |
+Firing is a wager: `fire(power)` with power 1–3 scales the whole shot.
+DPS is flat across powers, so the choice is tempo, not raw output.
 
-- `fire()` launches a shell from the turret tip along the turret heading.
+| Power | Damage | Shell speed | Cooldown | Role |
+|---|---|---|---|---|
+| 1 (light) | 10 | 650 px/s | 0.5 s | fast harassment, hard to dodge |
+| 2 (standard, default) | 20 | 600 px/s | 1.0 s | the original cannon |
+| 3 (heavy) | 30 | 550 px/s | 1.5 s | burst that punishes slow/close targets |
+
+- Heavy shells are slower and therefore dodgeable at range — power has
+  counterplay built into the physics (damage `10×p`, speed `700−50×p` px/s,
+  cooldown `0.5×p` s).
+- `fire(power)` launches a shell from the turret tip along the turret heading.
 - Shells travel in a straight line until they hit a tank, an obstacle, or a wall.
   Obstacle/wall hits destroy the shell with no effect. No splash damage in v1.
 - A tank can have multiple shells in flight; the only limit is the cooldown.
 - Firing while on cooldown is a no-op (the API exposes remaining cooldown).
 
-### 4.4 Sensor
+### 4.4 Sensor — adjustable focus
 
 | Property | Value (default) |
 |---|---|
-| Arc | **90°**, centered on the turret heading |
-| Range | 350 px |
+| Arc | **90°**, centered on the turret heading (adjustable 45–135°) |
+| Range | 350 px at 90°; scales so swept area stays constant |
 | Update | every tick, automatically |
+
+- `set_sensor(arc_deg)` trades width for range (persistent until changed):
+  45° sees ~495 px (sniper beam), 90° is the 350 px default, 135° sees
+  ~286 px (brawler awareness). `state.me.sensor_arc` / `sensor_range`
+  report the current values.
 
 - The sensor reports everything inside its arc and range **with unobstructed
   line of sight** (obstacles and walls block sensing; other tanks do not).
@@ -188,7 +199,8 @@ class HunterBot(Bot):
 | `self.turn(r)` | set hull turn rate, `r` ∈ [-1, 1] of max (negative = counter-clockwise) |
 | `self.turn_turret(r)` | set turret turn rate, `r` ∈ [-1, 1] of max |
 | `self.turn_to(deg)` / `self.turn_turret_to(deg)` | turn toward an absolute world heading (engine steers at max rate and stops there) |
-| `self.fire()` | fire if cooldown is 0 (one-shot, not persistent) |
+| `self.fire(power=2)` | fire if cooldown is 0 (one-shot); power 1–3 scales damage/speed/cooldown (§4.3) |
+| `self.set_sensor(arc_deg)` | set sensor arc 45–135°, trading width for range (§4.4); persistent |
 | `self.rng` | seeded `random.Random` instance for reproducible randomness |
 
 Angles in the API are **degrees**; distances are pixels; speeds are fractions of
@@ -273,8 +285,8 @@ All values live in `src/config.ts` and may be rebalanced freely.
 | Tank size | 40 × 30 px |
 | Forward / reverse speed | 150 / 75 px/s |
 | Hull / turret rotation | 90 / 180 °/s |
-| Shell speed / damage / cooldown | 600 px/s / 20 / 1.0 s |
-| Sensor arc / range | 90° / 350 px |
+| Shell (power p = 1–3) | damage 10p / speed 700−50p px/s / cooldown 0.5p s |
+| Sensor arc / range | 45–135° (default 90°) / area-constant, 350 px at 90° |
 | Bot CPU budget per tick | 10 ms |
 
 ## 10. Open Questions (deferred from v1)

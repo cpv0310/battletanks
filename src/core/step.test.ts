@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  CANNON_COOLDOWN_TICKS,
+  cannonCooldownTicks,
   HULL_ROTATION_SPEED,
-  SHELL_DAMAGE,
+  shellDamage,
   TANK_FORWARD_SPEED,
   TANK_RADIUS,
   TANK_REVERSE_SPEED,
@@ -138,15 +138,15 @@ describe('step: movement', () => {
 describe('step: firing and shells', () => {
   it('fires a shell and starts the cooldown', () => {
     const state = makeState([makeTank({ id: 0 })])
-    const next = step(state, intentsFor(state.tanks, { 0: { fire: true } }))
+    const next = step(state, intentsFor(state.tanks, { 0: { fire: 2 } }))
     expect(next.shells).toHaveLength(1)
     expect(next.shells[0].ownerId).toBe(0)
-    expect(next.tanks[0].cooldown).toBe(CANNON_COOLDOWN_TICKS)
+    expect(next.tanks[0].cooldown).toBe(cannonCooldownTicks(2))
   })
 
   it('cannot fire while on cooldown', () => {
     const state = makeState([makeTank({ id: 0, cooldown: 10 })])
-    const next = step(state, intentsFor(state.tanks, { 0: { fire: true } }))
+    const next = step(state, intentsFor(state.tanks, { 0: { fire: 2 } }))
     expect(next.shells).toHaveLength(0)
     expect(next.tanks[0].cooldown).toBe(9)
   })
@@ -155,10 +155,10 @@ describe('step: firing and shells', () => {
     const shooter = makeTank({ id: 0, x: 300, y: 500 })
     const target = makeTank({ id: 1, x: 360, y: 500 })
     const state = makeState([shooter, target], {
-      shells: [{ id: 0, ownerId: 0, x: 345, y: 500, heading: 0 }],
+      shells: [{ id: 0, ownerId: 0, x: 345, y: 500, heading: 0, power: 2 }],
     })
     const next = step(state, intentsFor(state.tanks))
-    expect(next.tanks[1].hp).toBe(100 - SHELL_DAMAGE)
+    expect(next.tanks[1].hp).toBe(100 - shellDamage(2))
     expect(next.shells).toHaveLength(0)
     expect(next.events[1].hitByShell).toHaveLength(1)
     expect(next.events[0].shellHitEnemy).toEqual([{ targetId: 1 }])
@@ -168,7 +168,7 @@ describe('step: firing and shells', () => {
     const shooter = makeTank({ id: 0, x: 300, y: 500 })
     const other = makeTank({ id: 1, x: 900, y: 500 })
     const state = makeState([shooter, other], {
-      shells: [{ id: 0, ownerId: 0, x: 290, y: 500, heading: 0 }],
+      shells: [{ id: 0, ownerId: 0, x: 290, y: 500, heading: 0, power: 2 }],
     })
     const next = step(state, intentsFor(state.tanks))
     expect(next.tanks[0].hp).toBe(100)
@@ -179,7 +179,7 @@ describe('step: firing and shells', () => {
     const target = makeTank({ id: 1, x: 400, y: 500 })
     const state = makeState([shooter, target], {
       obstacles: [{ x: 195, y: 450, width: 50, height: 100 }],
-      shells: [{ id: 0, ownerId: 0, x: 190, y: 500, heading: 0 }],
+      shells: [{ id: 0, ownerId: 0, x: 190, y: 500, heading: 0, power: 2 }],
     })
     const next = step(state, intentsFor(state.tanks))
     expect(next.shells).toHaveLength(0)
@@ -188,7 +188,7 @@ describe('step: firing and shells', () => {
 
   it('shells leaving the arena are removed', () => {
     const state = makeState([makeTank({ id: 0 }), makeTank({ id: 1, x: 100, y: 100 })], {
-      shells: [{ id: 0, ownerId: 0, x: 1195, y: 500, heading: 0 }],
+      shells: [{ id: 0, ownerId: 0, x: 1195, y: 500, heading: 0, power: 2 }],
     })
     const next = step(state, intentsFor(state.tanks))
     expect(next.shells).toHaveLength(0)
@@ -196,9 +196,9 @@ describe('step: firing and shells', () => {
 
   it('a killing hit marks the tank dead and notifies survivors', () => {
     const shooter = makeTank({ id: 0, x: 300, y: 500 })
-    const target = makeTank({ id: 1, x: 360, y: 500, hp: SHELL_DAMAGE })
+    const target = makeTank({ id: 1, x: 360, y: 500, hp: shellDamage(2) })
     const state = makeState([shooter, target], {
-      shells: [{ id: 0, ownerId: 0, x: 345, y: 500, heading: 0 }],
+      shells: [{ id: 0, ownerId: 0, x: 345, y: 500, heading: 0, power: 2 }],
     })
     const next = step(state, intentsFor(state.tanks))
     expect(next.tanks[1].alive).toBe(false)
@@ -210,12 +210,64 @@ describe('step: firing and shells', () => {
     const dead = makeTank({ id: 0, alive: false, hp: 0 })
     const live = makeTank({ id: 1, x: 900, y: 500 })
     const state = makeState([dead, live], {
-      shells: [{ id: 0, ownerId: 1, x: 590, y: 500, heading: Math.PI }],
+      shells: [{ id: 0, ownerId: 1, x: 590, y: 500, heading: Math.PI, power: 2 }],
     })
-    const next = step(state, intentsFor(state.tanks, { 0: { drive: 1, fire: true } }))
+    const next = step(state, intentsFor(state.tanks, { 0: { drive: 1, fire: 2 } }))
     expect(next.tanks[0].x).toBe(600)
     expect(next.shells).toHaveLength(1)
     expect(next.tanks[0].hp).toBe(0)
+  })
+})
+
+describe('step: variable fire power', () => {
+  it('scales cooldown with power', () => {
+    for (const power of [1, 2, 3]) {
+      const state = makeState([makeTank({ id: 0 })])
+      const next = step(state, intentsFor(state.tanks, { 0: { fire: power } }))
+      expect(next.tanks[0].cooldown).toBe(cannonCooldownTicks(power))
+      expect(next.shells[0].power).toBe(power)
+    }
+  })
+
+  it('heavy shells deal more damage', () => {
+    const shooter = makeTank({ id: 0, x: 300, y: 500 })
+    const target = makeTank({ id: 1, x: 360, y: 500 })
+    const state = makeState([shooter, target], {
+      shells: [{ id: 0, ownerId: 0, x: 345, y: 500, heading: 0, power: 3 }],
+    })
+    const next = step(state, intentsFor(state.tanks))
+    expect(next.tanks[1].hp).toBe(100 - shellDamage(3))
+  })
+
+  it('light shells travel faster than heavy shells', () => {
+    const state = makeState([makeTank({ id: 0 }), makeTank({ id: 1, x: 100, y: 100 })], {
+      shells: [
+        { id: 0, ownerId: 0, x: 600, y: 700, heading: 0, power: 1 },
+        { id: 1, ownerId: 0, x: 600, y: 800, heading: 0, power: 3 },
+      ],
+    })
+    const next = step(state, intentsFor(state.tanks))
+    const light = next.shells.find((shell) => shell.power === 1)
+    const heavy = next.shells.find((shell) => shell.power === 3)
+    expect(light && heavy && light.x - 600 > heavy.x - 600).toBe(true)
+  })
+
+  it('clamps fire power into [1, 3]', () => {
+    const state = makeState([makeTank({ id: 0 })])
+    const next = step(state, intentsFor(state.tanks, { 0: { fire: 99 } }))
+    expect(next.shells[0].power).toBe(3)
+  })
+})
+
+describe('step: sensor focus', () => {
+  it('applies the requested sensor arc, clamped to limits', () => {
+    const state = makeState([makeTank({ id: 0 })])
+    const narrow = step(state, intentsFor(state.tanks, { 0: { sensorArc: Math.PI / 4 } }))
+    expect(narrow.tanks[0].sensorArc).toBeCloseTo(Math.PI / 4)
+    const tooWide = step(state, intentsFor(state.tanks, { 0: { sensorArc: Math.PI * 2 } }))
+    expect(tooWide.tanks[0].sensorArc).toBeCloseTo(Math.PI * 0.75)
+    const tooNarrow = step(state, intentsFor(state.tanks, { 0: { sensorArc: 0.01 } }))
+    expect(tooNarrow.tanks[0].sensorArc).toBeCloseTo(Math.PI / 4)
   })
 })
 
@@ -223,7 +275,7 @@ describe('step: determinism and immutability', () => {
   it('does not mutate the input state', () => {
     const state = makeState([makeTank({ id: 0 }), makeTank({ id: 1, x: 200, y: 200 })])
     const frozen = JSON.parse(JSON.stringify(state))
-    step(state, intentsFor(state.tanks, { 0: { drive: 1, fire: true } }))
+    step(state, intentsFor(state.tanks, { 0: { drive: 1, fire: 2 } }))
     expect(JSON.parse(JSON.stringify(state))).toEqual(frozen)
   })
 

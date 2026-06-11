@@ -43,7 +43,14 @@ export function registerTankGenerators(): void {
       'self.turn_to(me.turret_heading + target.bearing)\n' +
       INDENT +
       'self.drive(1.0)\n',
-    action_fire: () => 'if me.cooldown == 0:\n' + INDENT + 'self.fire()\n',
+    action_fire: (block) => {
+      const power = Number(block.getFieldValue('POWER')) || 2
+      return 'if me.cooldown == 0:\n' + INDENT + `self.fire(${power})\n`
+    },
+    action_sensor: (block) => {
+      const arc = Number(block.getFieldValue('MODE')) || 90
+      return `self.set_sensor(${arc})\n`
+    },
     action_say: (block) => `print(${JSON.stringify(String(block.getFieldValue('TEXT')))})\n`,
     control_if: (block, generator) => {
       const cond = generator.valueToCode(block, 'COND', Order.NONE) || 'False'

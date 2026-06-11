@@ -30,7 +30,7 @@ class TeamHunter(Bot):
             self.turn_to(aim)
             self.drive(1.0 if target.distance > 160 else 0.2)
             if abs(target.bearing) < 5 and me.cooldown == 0:
-                self.fire()
+                self.fire(3 if target.distance < 180 else 2)
             return
 
         if me.at_wall:

@@ -1,4 +1,12 @@
-import { MAX_TEAM_MESSAGES_PER_TICK, MAX_TEAM_MESSAGE_BYTES } from '../config'
+import {
+  DEFAULT_FIRE_POWER,
+  MAX_FIRE_POWER,
+  MAX_TEAM_MESSAGES_PER_TICK,
+  MAX_TEAM_MESSAGE_BYTES,
+  MIN_FIRE_POWER,
+  SENSOR_MAX_ARC,
+  SENSOR_MIN_ARC,
+} from '../config'
 import type { TankIntents, TurnCommand } from '../core/types'
 import { clamp } from '../core/geometry'
 
@@ -33,7 +41,14 @@ export function sanitizeBotOutput(rawJson: string): BotOutput {
   if (turn) intents.turn = turn
   const turretTurn = parseTurn(record.turret_turn)
   if (turretTurn) intents.turretTurn = turretTurn
-  if (record.fire === true) intents.fire = true
+  if (record.fire === true) {
+    intents.fire = DEFAULT_FIRE_POWER
+  } else if (isFiniteNumber(record.fire) && record.fire > 0) {
+    intents.fire = clamp(record.fire, MIN_FIRE_POWER, MAX_FIRE_POWER)
+  }
+  if (isFiniteNumber(record.sensor_arc)) {
+    intents.sensorArc = clamp(record.sensor_arc * DEG_TO_RAD, SENSOR_MIN_ARC, SENSOR_MAX_ARC)
+  }
 
   return { intents, teamMessages: parseTeamMessages(record.team_messages) }
 }

@@ -1,4 +1,5 @@
-# Sniper — backs into the nearest corner, then sweeps its sensor and snipes.
+# Sniper — backs into the nearest corner, narrows its sensor for extra
+# range, then sweeps and snipes with heavy shells.
 import math
 
 from battletanks import Bot
@@ -12,6 +13,7 @@ class Sniper(Bot):
 
     def on_tick(self, state):
         me = state.me
+        self.set_sensor(45)  # narrow beam: ~495 px of vision
         if self.corner is None:
             cx = 70 if me.x < self.arena_width / 2 else self.arena_width - 70
             cy = 70 if me.y < self.arena_height / 2 else self.arena_height - 70
@@ -29,6 +31,7 @@ class Sniper(Bot):
             target = state.sensor.tanks[0]
             self.turn_turret_to(me.turret_heading + target.bearing)
             if abs(target.bearing) < 3 and me.cooldown == 0:
-                self.fire()
+                # Far targets dodge heavy shells, so scale power by distance.
+                self.fire(3 if target.distance < 250 else 1)
         else:
             self.turn_turret(0.7)

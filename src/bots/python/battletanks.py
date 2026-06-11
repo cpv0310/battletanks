@@ -74,9 +74,26 @@ class Bot:
         """Steer the turret toward an absolute world heading and stop there."""
         self._commands['turret_turn'] = {'kind': 'to', 'target': float(heading_deg)}
 
-    def fire(self):
-        """Fire the cannon if it is off cooldown (one-shot, not persistent)."""
-        self._commands['fire'] = True
+    def fire(self, power=2):
+        """Fire the cannon if it is off cooldown (one-shot, not persistent).
+
+        `power` is a wager from 1 to 3:
+          - damage   = 10 * power
+          - speed    = 700 - 50 * power px/s (heavy shells are dodgeable)
+          - cooldown = 0.5 * power seconds
+        DPS is flat across powers: light = fast harassment, heavy = burst
+        that punishes anything slow or close. fire() defaults to power 2.
+        """
+        self._commands['fire'] = _clamp(power, 1.0, 3.0)
+
+    def set_sensor(self, arc_deg):
+        """Set the sensor arc (45..135 degrees); persists until changed.
+
+        Range scales to keep the swept area constant:
+        45 deg sees ~495 px, 90 deg (default) 350 px, 135 deg ~286 px.
+        Narrow = sniper vision, wide = brawler awareness.
+        """
+        self._commands['sensor_arc'] = _clamp(arc_deg, 45.0, 135.0)
 
     def send_team(self, data):
         """Send a message to all living teammates (delivered next tick).

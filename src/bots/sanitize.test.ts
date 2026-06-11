@@ -15,8 +15,26 @@ describe('sanitizeBotOutput', () => {
     expect(intents.turn).toEqual({ kind: 'rate', value: -0.3 })
     expect(intents.turretTurn?.kind).toBe('to')
     expect(intents.turretTurn?.kind === 'to' && intents.turretTurn.target).toBeCloseTo(Math.PI / 2)
-    expect(intents.fire).toBe(true)
+    expect(intents.fire).toBe(2)
     expect(teamMessages).toEqual([])
+  })
+
+  it('maps fire power: true is the default power, numbers clamp to [1, 3]', () => {
+    expect(sanitizeBotOutput('{"fire": true}').intents.fire).toBe(2)
+    expect(sanitizeBotOutput('{"fire": 1}').intents.fire).toBe(1)
+    expect(sanitizeBotOutput('{"fire": 3}').intents.fire).toBe(3)
+    expect(sanitizeBotOutput('{"fire": 99}').intents.fire).toBe(3)
+    expect(sanitizeBotOutput('{"fire": 0.2}').intents.fire).toBe(1)
+    expect(sanitizeBotOutput('{"fire": 0}').intents.fire).toBeUndefined()
+    expect(sanitizeBotOutput('{"fire": -1}').intents.fire).toBeUndefined()
+  })
+
+  it('converts sensor_arc degrees to clamped radians', () => {
+    const narrow = sanitizeBotOutput('{"sensor_arc": 45}').intents.sensorArc
+    expect(narrow).toBeCloseTo(Math.PI / 4)
+    const clamped = sanitizeBotOutput('{"sensor_arc": 720}').intents.sensorArc
+    expect(clamped).toBeCloseTo(Math.PI * 0.75)
+    expect(sanitizeBotOutput('{"sensor_arc": "wide"}').intents.sensorArc).toBeUndefined()
   })
 
   it('returns empty output for invalid JSON', () => {

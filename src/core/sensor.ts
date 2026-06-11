@@ -1,4 +1,4 @@
-import { SENSOR_ARC, SENSOR_RANGE } from '../config'
+import { sensorRange } from '../config'
 import type {
   ObstacleDetection,
   SensorReading,
@@ -15,8 +15,6 @@ import {
   relativeAngle,
   segmentIntersectsRect,
 } from './geometry'
-
-const HALF_ARC = SENSOR_ARC / 2
 
 /** Sensor readings for every tank (dead tanks get an empty reading). */
 export function senseAll(state: SimState): SensorReading[] {
@@ -35,12 +33,13 @@ export function sense(state: SimState, sensor: TankState): SensorReading {
 
 function detectTanks(state: SimState, sensor: TankState): TankDetection[] {
   const detections: TankDetection[] = []
+  const range = sensorRange(sensor.sensorArc)
   for (const target of state.tanks) {
     if (target.id === sensor.id || !target.alive) continue
     const dist = distance(sensor, target)
-    if (dist > SENSOR_RANGE) continue
+    if (dist > range) continue
     const bearing = relativeAngle(sensor.turretHeading, angleBetween(sensor, target))
-    if (Math.abs(bearing) > HALF_ARC) continue
+    if (Math.abs(bearing) > sensor.sensorArc / 2) continue
     if (isBlocked(state, sensor, target)) continue
     detections.push({
       id: target.id,
@@ -59,12 +58,13 @@ function isBlocked(state: SimState, from: TankState, to: TankState): boolean {
 
 function detectObstacles(state: SimState, sensor: TankState): ObstacleDetection[] {
   const detections: ObstacleDetection[] = []
+  const range = sensorRange(sensor.sensorArc)
   for (const rect of state.arena.obstacles) {
     const nearest = clampPointToRect(sensor, rect)
     const dist = distance(sensor, nearest)
-    if (dist > SENSOR_RANGE) continue
+    if (dist > range) continue
     const bearing = relativeAngle(sensor.turretHeading, angleBetween(sensor, nearest))
-    if (Math.abs(bearing) > HALF_ARC) continue
+    if (Math.abs(bearing) > sensor.sensorArc / 2) continue
     detections.push({ distance: dist, bearing, rect })
   }
   return detections.sort((a, b) => a.distance - b.distance)
@@ -72,6 +72,6 @@ function detectObstacles(state: SimState, sensor: TankState): ObstacleDetection[
 
 function detectWall(state: SimState, sensor: TankState): WallDetection | null {
   const dist = rayBoundsDistance(sensor, sensor.turretHeading, state.arena.width, state.arena.height)
-  if (dist > SENSOR_RANGE) return null
+  if (dist > sensorRange(sensor.sensorArc)) return null
   return { distance: dist, bearing: 0 }
 }

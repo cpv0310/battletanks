@@ -1,12 +1,11 @@
 import Phaser from 'phaser'
 import {
-  SENSOR_ARC,
-  SENSOR_RANGE,
   SHELL_RADIUS,
   TANK_COLORS,
   TANK_HEIGHT,
   TANK_HP,
   TANK_WIDTH,
+  sensorRange,
 } from '../config'
 import type { Snapshot } from '../bots/protocol'
 import { senseAll } from '../core/sensor'
@@ -105,7 +104,7 @@ export class BattleScene extends Phaser.Scene {
 
     g.fillStyle(COLOR_SHELL, 1)
     for (const shell of sim.shells) {
-      g.fillCircle(shell.x, shell.y, SHELL_RADIUS)
+      g.fillCircle(shell.x, shell.y, SHELL_RADIUS + (shell.power - 2))
     }
   }
 
@@ -144,17 +143,18 @@ export class BattleScene extends Phaser.Scene {
     g.fillRect(tank.x - 20, tank.y - 30, 40 * ratio, 4)
   }
 
-  /** Translucent 90° wedge showing where this tank's sensor can see. */
+  /** Translucent wedge showing this tank's current sensor arc and range. */
   private drawSensorZone(tank: TankState): void {
     const g = this.graphics
     const color = TANK_COLORS[tank.id] ?? 0xffffff
-    const start = tank.turretHeading - SENSOR_ARC / 2
-    const end = tank.turretHeading + SENSOR_ARC / 2
+    const start = tank.turretHeading - tank.sensorArc / 2
+    const end = tank.turretHeading + tank.sensorArc / 2
+    const range = sensorRange(tank.sensorArc)
     g.fillStyle(color, 0.07)
-    g.slice(tank.x, tank.y, SENSOR_RANGE, start, end, false)
+    g.slice(tank.x, tank.y, range, start, end, false)
     g.fillPath()
     g.lineStyle(1.5, color, 0.35)
-    g.slice(tank.x, tank.y, SENSOR_RANGE, start, end, false)
+    g.slice(tank.x, tank.y, range, start, end, false)
     g.strokePath()
   }
 

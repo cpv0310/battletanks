@@ -24,19 +24,53 @@ export const TANK_REVERSE_SPEED = 75
 export const HULL_ROTATION_SPEED = Math.PI / 2
 export const TURRET_ROTATION_SPEED = Math.PI
 
-export const SHELL_SPEED = 600
-export const SHELL_DAMAGE = 20
+/**
+ * Variable fire power (a Robocode-style wager). Damage, shell speed, and
+ * cooldown all scale with power, keeping DPS flat: light shots are fast and
+ * frequent, heavy shots hit hard but travel slower and lock the cannon
+ * longer. Power 2 reproduces the original cannon exactly.
+ */
+export const MIN_FIRE_POWER = 1
+export const MAX_FIRE_POWER = 3
+export const DEFAULT_FIRE_POWER = 2
+export const SHELL_DAMAGE_PER_POWER = 10
+export const SHELL_SPEED_BASE = 700
+export const SHELL_SPEED_PER_POWER = 50
+export const COOLDOWN_TICKS_PER_POWER = TICK_RATE / 2
+
 export const SHELL_RADIUS = 3
-export const CANNON_COOLDOWN_TICKS = TICK_RATE
 /** Shells spawn this far from the tank center, outside TANK_RADIUS. */
 export const MUZZLE_OFFSET = 26
+
+export function shellDamage(power: number): number {
+  return SHELL_DAMAGE_PER_POWER * power
+}
+
+export function shellSpeed(power: number): number {
+  return SHELL_SPEED_BASE - SHELL_SPEED_PER_POWER * power
+}
+
+export function cannonCooldownTicks(power: number): number {
+  return Math.round(COOLDOWN_TICKS_PER_POWER * power)
+}
 
 /** A hull within this many px of a wall (beyond TANK_RADIUS) counts as touching it. */
 export const WALL_CONTACT_EPSILON = 3
 
-/** Sensor: 90 degree arc centered on the turret heading. */
+/**
+ * Sensor: an arc centered on the turret heading. Bots may trade arc width
+ * for range (and vice versa); range scales so the swept area stays constant.
+ * Defaults: 90 degrees at 350 px.
+ */
 export const SENSOR_ARC = Math.PI / 2
 export const SENSOR_RANGE = 350
+export const SENSOR_MIN_ARC = Math.PI / 4
+export const SENSOR_MAX_ARC = Math.PI * 0.75
+
+/** Range for a given arc, keeping arc * range^2 (swept area) constant. */
+export function sensorRange(arc: number): number {
+  return SENSOR_RANGE * Math.sqrt(SENSOR_ARC / arc)
+}
 
 export const SPAWN_MIN_SEPARATION = 250
 export const SPAWN_OBSTACLE_CLEARANCE = 80

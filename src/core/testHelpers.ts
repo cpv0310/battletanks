@@ -15,6 +15,7 @@ export function makeTank(overrides: Partial<TankState> & { id: number }): TankSt
     cooldown: 0,
     alive: true,
     blocked: false,
+    sensorArc: Math.PI / 2,
     ...overrides,
   }
 }

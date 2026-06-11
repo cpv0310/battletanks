@@ -192,6 +192,52 @@ describe('MatchEngine with real Pyodide', () => {
     expect(brawler.x !== 600 || brawler.y !== 500).toBe(true)
   })
 
+  it('variable fire power and sensor focus work through the bridge', { timeout: 60_000 }, () => {
+    const ABILITY_TESTER = `
+from battletanks import Bot
+
+class Tester(Bot):
+    def on_tick(self, state):
+        me = state.me
+        if state.tick == 0:
+            self.set_sensor(45)
+            self.fire(3)
+        elif state.tick == 1:
+            print('cooldown', round(me.cooldown, 2))
+        elif state.tick == 2:
+            print('arc', round(me.sensor_arc), 'range', round(me.sensor_range))
+`
+    const { engine, logs } = makeEngine([
+      { name: 'tester', script: ABILITY_TESTER },
+      { name: 'other', script: TALKER_BOT },
+    ])
+    engine.advance(4)
+    const output = logs.filter((entry) => entry.botId === 0 && entry.kind === 'out')
+    // Heavy shot locks the cannon for 1.5s (power 3 x 0.5s).
+    expect(output.some((entry) => entry.text === 'cooldown 1.5')).toBe(true)
+    expect(output.some((entry) => entry.text === 'arc 45 range 495')).toBe(true)
+    const shell = engine.snapshot().sim.shells[0] ?? null
+    expect(shell === null || shell.power === 3).toBe(true)
+    expect(engine.snapshot().botStatus[0].crashed).toBe(false)
+  })
+
+  it('royal rumble: 8 solo bots fight without crashing', { timeout: 240_000 }, () => {
+    const lineup = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => ({
+      name: `rumble-${i}`,
+      script: SAMPLE_SCRIPTS[i % SAMPLE_SCRIPTS.length].source,
+    }))
+    const { engine } = makeEngine(lineup, 99)
+    engine.advance(3600) // one minute of battle
+    const snapshot = engine.snapshot()
+    expect(snapshot.botStatus.every((status) => !status.crashed)).toBe(true)
+    // A free-for-all this dense must produce real combat.
+    const totalHp = snapshot.sim.tanks.reduce((sum, tank) => sum + tank.hp, 0)
+    expect(totalHp).toBeLessThan(800)
+    if (snapshot.result) {
+      expect(snapshot.result.winners.length).toBeLessThanOrEqual(1)
+    }
+  })
+
   it('all sample bots run a battle without crashing', { timeout: 120_000 }, () => {
     const { engine } = makeEngine(
       SAMPLE_SCRIPTS.map((sample) => ({ name: sample.name, script: sample.source })),
@@ -313,6 +359,29 @@ class Solo(Bot):
     engine.advance(5)
     expect(logs.some((entry) => entry.text === 'team is None')).toBe(true)
     expect(engine.snapshot().botStatus.every((status) => !status.crashed)).toBe(true)
+  })
+
+  it('team battle: 2v2 team hunters fight to a team result', { timeout: 240_000 }, () => {
+    const teamHunter = SAMPLE_SCRIPTS.find((sample) => sample.name === 'Team Hunter')
+    if (!teamHunter) throw new Error('Team Hunter sample missing')
+    const { engine } = makeEngine(
+      [
+        { name: 'red-1', script: teamHunter.source, team: 1 },
+        { name: 'red-2', script: teamHunter.source, team: 1 },
+        { name: 'blue-1', script: teamHunter.source, team: 2 },
+        { name: 'blue-2', script: teamHunter.source, team: 2 },
+      ],
+      31,
+    )
+    engine.advance(10_800)
+    const snapshot = engine.snapshot()
+    expect(snapshot.botStatus.every((status) => !status.crashed)).toBe(true)
+    expect(snapshot.result).not.toBeNull()
+    // Winners (if any) must all come from a single team.
+    const winnerTeams = new Set(
+      (snapshot.result?.winners ?? []).map((id) => snapshot.sim.tanks[id].team),
+    )
+    expect(winnerTeams.size).toBeLessThanOrEqual(1)
   })
 
   it('a team win ends the match for the whole team', { timeout: 120_000 }, () => {

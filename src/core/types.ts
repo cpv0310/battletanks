@@ -35,6 +35,8 @@ export interface TankState {
   readonly alive: boolean
   /** True if the tank tried to move last tick but was obstructed. */
   readonly blocked: boolean
+  /** Sensor arc in radians; range scales inversely (see config.sensorRange). */
+  readonly sensorArc: number
 }
 
 export interface ShellState {
@@ -43,6 +45,8 @@ export interface ShellState {
   readonly x: number
   readonly y: number
   readonly heading: number
+  /** Fire power 1..3; damage and speed derive from it. */
+  readonly power: number
 }
 
 export type CollisionKind = 'wall' | 'obstacle' | 'tank'
@@ -79,19 +83,23 @@ export type TurnCommand =
   | { readonly kind: 'rate'; readonly value: number }
   | { readonly kind: 'to'; readonly target: number }
 
-/** Persistent movement intents plus the one-shot fire flag for one tank. */
+/** Persistent movement intents plus the one-shot fire power for one tank. */
 export interface TankIntents {
   readonly drive: number
   readonly turn: TurnCommand
   readonly turretTurn: TurnCommand
-  readonly fire: boolean
+  /** 0 = hold fire; otherwise fire power 1..3 (one-shot, reset every tick). */
+  readonly fire: number
+  /** Desired sensor arc in radians (persistent). */
+  readonly sensorArc: number
 }
 
 export const IDLE_INTENTS: TankIntents = {
   drive: 0,
   turn: { kind: 'rate', value: 0 },
   turretTurn: { kind: 'rate', value: 0 },
-  fire: false,
+  fire: 0,
+  sensorArc: Math.PI / 2,
 }
 
 export interface TankDetection {

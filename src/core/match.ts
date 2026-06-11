@@ -1,4 +1,4 @@
-import { MATCH_TIME_LIMIT_TICKS, MAX_PLAYERS, MIN_PLAYERS, TANK_HP } from '../config'
+import { MATCH_TIME_LIMIT_TICKS, MAX_PLAYERS, MIN_PLAYERS, SENSOR_ARC, TANK_HP } from '../config'
 import type { SimState, TankEvents, TankState } from './types'
 import { SPAWN_POINTS, createArena, type MapKind } from './arena'
 import { createRng } from './rng'
@@ -44,6 +44,7 @@ export function createMatch(players: ReadonlyArray<MatchPlayer>, seed: number, m
       cooldown: 0,
       alive: true,
       blocked: false,
+      sensorArc: SENSOR_ARC,
     }
   })
   return {

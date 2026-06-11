@@ -50,6 +50,24 @@ describe('blocksJsonToPython', () => {
     expect(code).toContain('print("hi \\"there\\"")')
   })
 
+  it('maps fire power and sensor mode dropdowns', () => {
+    const code = blocksJsonToPython(
+      workspaceJson({
+        type: 'event_tick',
+        inputs: {
+          DO: {
+            block: chain(
+              { type: 'action_sensor', fields: { MODE: '45' } },
+              { type: 'action_fire', fields: { POWER: '3' } },
+            ),
+          },
+        },
+      }),
+    )
+    expect(code).toContain('self.set_sensor(45)')
+    expect(code).toContain('self.fire(3)')
+  })
+
   it('treats loose statement chains as every-tick logic', () => {
     const code = blocksJsonToPython(
       workspaceJson({ type: 'action_drive', fields: { DIR: 'FORWARD', SPEED: 100 } }),
@@ -76,7 +94,7 @@ describe('blocksJsonToPython', () => {
     )
     expect(code).toContain('if (target is not None and target.distance < 150):')
     expect(code).toContain('if me.cooldown == 0:')
-    expect(code).toContain('self.fire()')
+    expect(code).toContain('self.fire(2)')
   })
 
   it('produces consistent indentation (no tabs, two-space steps)', () => {
