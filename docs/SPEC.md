@@ -114,10 +114,11 @@ DPS is flat across powers, so the choice is tempo, not raw output.
 | Range | 350 px at 90°; scales so swept area stays constant |
 | Update | every tick, automatically |
 
-- `set_sensor(arc_deg)` trades width for range (persistent until changed):
-  45° sees ~495 px (sniper beam), 90° is the 350 px default, 135° sees
-  ~286 px (brawler awareness). `state.me.sensor_arc` / `sensor_range`
-  report the current values.
+- `set_sensor(arc_deg)` trades width for range (persistent until changed),
+  and narrowing buys disproportionate reach: below 90° range scales with
+  `(90/arc)^0.75`, at or above 90° with `(90/arc)^0.5`. So 45° sees ~589 px
+  (sniper beam), 90° is the 350 px default, and 135° sees ~286 px (brawler
+  awareness). `state.me.sensor_arc` / `sensor_range` report current values.
 
 - The sensor reports everything inside its arc and range **with unobstructed
   line of sight** (obstacles and walls block sensing; other tanks do not).
@@ -307,7 +308,7 @@ All values live in `src/config.ts` and may be rebalanced freely.
 | Forward / reverse speed | 150 / 75 px/s |
 | Hull / turret rotation | 90 / 180 °/s |
 | Shell (power p = 1–3) | damage 10p / speed 700−50p px/s / cooldown 0.5p s |
-| Sensor arc / range | 45–135° (default 90°) / area-constant, 350 px at 90° |
+| Sensor arc / range | 45–135° (default 90°) / 350 px at 90°, ~589 px at 45°, ~286 px at 135° |
 | Bot CPU budget per tick | 10 ms |
 
 ## 10. Open Questions (deferred from v1)

@@ -13,7 +13,7 @@ class Sniper(Bot):
 
     def on_tick(self, state):
         me = state.me
-        self.set_sensor(45)  # narrow beam: ~495 px of vision
+        self.set_sensor(45)  # narrow beam: ~590 px of vision
         if self.corner is None:
             cx = 70 if me.x < self.arena_width / 2 else self.arena_width - 70
             cy = 70 if me.y < self.arena_height / 2 else self.arena_height - 70

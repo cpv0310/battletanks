@@ -113,9 +113,9 @@ class Bot:
     def set_sensor(self, arc_deg):
         """Set the sensor arc (45..135 degrees); persists until changed.
 
-        Range scales to keep the swept area constant:
-        45 deg sees ~495 px, 90 deg (default) 350 px, 135 deg ~286 px.
-        Narrow = sniper vision, wide = brawler awareness.
+        Narrowing buys extra reach: 45 deg sees ~590 px, 90 deg (default)
+        350 px, 135 deg ~286 px. Narrow = sniper vision, wide = brawler
+        awareness.
         """
         self._commands['sensor_arc'] = _clamp(arc_deg, 45.0, 135.0)
 

@@ -67,9 +67,14 @@ export const SENSOR_RANGE = 350
 export const SENSOR_MIN_ARC = Math.PI / 4
 export const SENSOR_MAX_ARC = Math.PI * 0.75
 
-/** Range for a given arc, keeping arc * range^2 (swept area) constant. */
+/**
+ * Range for a given arc. Narrowing below the default buys disproportionate
+ * reach (exponent 0.75: 45° sees ~589 px); widening trades on constant
+ * swept area (exponent 0.5: 135° sees ~286 px). Continuous at 90°/350 px.
+ */
 export function sensorRange(arc: number): number {
-  return SENSOR_RANGE * Math.sqrt(SENSOR_ARC / arc)
+  const ratio = SENSOR_ARC / arc
+  return SENSOR_RANGE * Math.pow(ratio, arc < SENSOR_ARC ? 0.75 : 0.5)
 }
 
 export const SPAWN_MIN_SEPARATION = 250

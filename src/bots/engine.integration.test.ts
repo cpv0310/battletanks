@@ -215,7 +215,7 @@ class Tester(Bot):
     const output = logs.filter((entry) => entry.botId === 0 && entry.kind === 'out')
     // Heavy shot locks the cannon for 1.5s (power 3 x 0.5s).
     expect(output.some((entry) => entry.text === 'cooldown 1.5')).toBe(true)
-    expect(output.some((entry) => entry.text === 'arc 45 range 495')).toBe(true)
+    expect(output.some((entry) => entry.text === 'arc 45 range 589')).toBe(true)
     const shell = engine.snapshot().sim.shells[0] ?? null
     expect(shell === null || shell.power === 3).toBe(true)
     expect(engine.snapshot().botStatus[0].crashed).toBe(false)

@@ -92,11 +92,12 @@ describe('sensor: obstacles and walls', () => {
 })
 
 describe('sensor focus (arc/range tradeoff)', () => {
-  it('a narrow arc sees farther but not wider', () => {
+  it('a narrow arc sees much farther but not wider', () => {
     const sensor = makeTank({ id: 0, x: 300, y: 500, turretHeading: 0, sensorArc: Math.PI / 4 })
-    const farAhead = makeTank({ id: 1, x: 300 + 450, y: 500 })
-    const toTheSide = makeTank({ id: 2, x: 400, y: 600 }) // ~45 deg off-axis
-    const reading = sense(makeState([sensor, farAhead, toTheSide]), sensor)
+    const farAhead = makeTank({ id: 1, x: 300 + 580, y: 500 }) // inside the ~589px beam
+    const tooFar = makeTank({ id: 2, x: 300 + 600, y: 500 })
+    const toTheSide = makeTank({ id: 3, x: 400, y: 600 }) // ~45 deg off-axis
+    const reading = sense(makeState([sensor, farAhead, tooFar, toTheSide]), sensor)
     expect(reading.tanks.map((t) => t.id)).toEqual([1])
   })
 
