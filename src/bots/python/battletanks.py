@@ -9,6 +9,27 @@ Angles are in degrees (0 = right/+x, increasing clockwise on screen).
 Distances are in pixels. Speeds and turn rates are fractions of the tank's
 maximum, in [-1, 1].
 
+Loadouts (8 points to spend, declared as a class attribute):
+
+    class MyBot(Bot):
+        loadout = ['armor', 'shield', 'gyro']   # 3 + 3 + 2 = 8 points
+
+  Modules:
+    'engine' (3)  +25% speed, -20 max HP
+    'armor'  (3)  +40 max HP, -20% speed
+    'gyro'   (2)  +50% turret rotation speed
+    'radar'  (3)  self.ping(): next tick state.ping lists EVERY living tank
+                  (ignores walls and sensor arc). 5s cooldown — and every
+                  tank on the field hears it (their events.pinged gets your
+                  position), so pinging reveals you.
+    'shield' (3)  self.shield(): absorb the next 25 damage for up to 3s;
+                  you cannot fire while it is up. 10s cooldown.
+    'boost'  (2)  self.boost(): +80% speed for 2s, then -40% fatigue for 2s.
+                  10s cooldown.
+  State: state.me.modules / max_hp, plus state.me.shield / boost / radar
+  (each None unless you own the module). An illegal loadout (unknown module,
+  duplicates, or over 8 points) disables the bot with an error.
+
 Teams:
   - state.me.team           Your team number, or None if playing solo.
   - state.team              None when solo; otherwise has:
@@ -45,6 +66,9 @@ def _clamp(value, low, high):
 
 class Bot:
     """Base class for player bots. Override the on_* handlers."""
+
+    #: Modules to equip (see the module list above). 8 points to spend.
+    loadout = []
 
     def __init__(self):
         self._commands = {}
@@ -94,6 +118,21 @@ class Bot:
         Narrow = sniper vision, wide = brawler awareness.
         """
         self._commands['sensor_arc'] = _clamp(arc_deg, 45.0, 135.0)
+
+    def ping(self):
+        """Radar ping (needs 'radar'): next tick, state.ping lists every
+        living tank regardless of walls or sensor arc. Everyone hears it."""
+        self._commands['ping'] = True
+
+    def shield(self):
+        """Raise the shield (needs 'shield'): absorbs 25 damage for up to
+        3s; the cannon is locked while it is up."""
+        self._commands['shield'] = True
+
+    def boost(self):
+        """Afterburner (needs 'boost'): +80% speed for 2s, then 2s of
+        -40% fatigue."""
+        self._commands['boost'] = True
 
     def send_team(self, data):
         """Send a message to all living teammates (delivered next tick).

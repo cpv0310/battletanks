@@ -68,6 +68,27 @@ describe('blocksJsonToPython', () => {
     expect(code).toContain('self.fire(3)')
   })
 
+  it('auto-equips modules for ability blocks used in the program', () => {
+    const code = blocksJsonToPython(
+      workspaceJson({
+        type: 'event_hit',
+        inputs: {
+          DO: {
+            block: chain({ type: 'action_shield' }, { type: 'action_boost' }),
+          },
+        },
+      }),
+    )
+    expect(code).toContain("loadout = ['shield', 'boost']")
+    expect(code).toContain('self.shield()')
+    expect(code).toContain('self.boost()')
+  })
+
+  it('emits no loadout line when no ability blocks are used', () => {
+    const code = blocksJsonToPython(STARTER_BLOCKS_JSON)
+    expect(code).not.toContain('loadout =')
+  })
+
   it('treats loose statement chains as every-tick logic', () => {
     const code = blocksJsonToPython(
       workspaceJson({ type: 'action_drive', fields: { DIR: 'FORWARD', SPEED: 100 } }),

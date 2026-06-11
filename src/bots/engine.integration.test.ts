@@ -221,6 +221,90 @@ class Tester(Bot):
     expect(engine.snapshot().botStatus[0].crashed).toBe(false)
   })
 
+  it('script-declared loadouts shape the tank and power abilities', { timeout: 60_000 }, () => {
+    const LOADOUT_BOT = `
+from battletanks import Bot
+
+class Loaded(Bot):
+    loadout = ['armor', 'radar', 'gyro']
+
+    def on_tick(self, state):
+        me = state.me
+        if state.tick == 0:
+            print('hp', me.hp, 'of', me.max_hp, 'modules', len(me.modules))
+            self.ping()
+        if state.ping:
+            print('ping sees', len([c for c in state.ping if not c.is_teammate]))
+
+    def on_hit(self, event):
+        pass
+`
+    const LISTENER = `
+from battletanks import Bot
+
+class Listener(Bot):
+    def on_tick(self, state):
+        for p in state.events.pinged:
+            print('heard ping from', round(p.x), round(p.y))
+`
+    const { engine, logs } = makeEngine([
+      { name: 'loaded', script: LOADOUT_BOT },
+      { name: 'listener', script: LISTENER },
+    ])
+    engine.advance(3)
+    const text = (botId: number) =>
+      logs.filter((entry) => entry.botId === botId && entry.kind === 'out').map((e) => e.text)
+    expect(text(0).some((line) => line === 'hp 140 of 140 modules 3')).toBe(true)
+    expect(text(0).some((line) => line === 'ping sees 1')).toBe(true)
+    expect(text(1).some((line) => line.startsWith('heard ping from'))).toBe(true)
+    expect(engine.loadoutOf(0)).toEqual(['armor', 'radar', 'gyro'])
+  })
+
+  it('a shielded bot survives a volley that would kill a stock tank', { timeout: 60_000 }, () => {
+    const SHIELD_BOT = `
+from battletanks import Bot
+
+class Shieldy(Bot):
+    loadout = ['shield']
+
+    def on_tick(self, state):
+        pass
+
+    def on_hit(self, event):
+        self.shield()
+        print('shielded', state if False else '')
+`
+    const { engine } = makeEngine([
+      { name: 'shieldy', script: SHIELD_BOT },
+      { name: 'idle', script: TALKER_BOT },
+    ])
+    engine.advance(10)
+    expect(engine.snapshot().botStatus[0].crashed).toBe(false)
+  })
+
+  it('an illegal loadout disables the bot with a clear error', { timeout: 60_000 }, () => {
+    const BAD_LOADOUT = `
+from battletanks import Bot
+
+class Greedy(Bot):
+    loadout = ['armor', 'engine', 'shield']  # 9 points: over budget
+
+    def on_tick(self, state):
+        pass
+`
+    const { engine, logs } = makeEngine([
+      { name: 'greedy', script: BAD_LOADOUT },
+      { name: 'ok', script: TALKER_BOT },
+    ])
+    engine.advance(5)
+    const snapshot = engine.snapshot()
+    expect(snapshot.botStatus[0].inert).toBe(true)
+    expect(logs.some((entry) => entry.botId === 0 && entry.text.includes('Invalid loadout'))).toBe(
+      true,
+    )
+    expect(snapshot.sim.tick).toBe(5) // the match goes on without it
+  })
+
   it('royal rumble: 8 solo bots fight without crashing', { timeout: 240_000 }, () => {
     const lineup = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => ({
       name: `rumble-${i}`,

@@ -1,4 +1,6 @@
 import {
+  ARENA_HEIGHT,
+  ARENA_WIDTH,
   BOT_BUDGET_MS,
   BOT_OVERRUN_LIMIT,
   TANK_RADIUS,
@@ -6,6 +8,7 @@ import {
   WALL_CONTACT_EPSILON,
   sensorRange,
 } from '../config'
+import { tankStats, validateLoadout, type ModuleId } from '../core/loadout'
 import { createMatch, evaluateMatch, type MatchResult } from '../core/match'
 import type { MapKind } from '../core/arena'
 import { createRng } from '../core/rng'
@@ -29,7 +32,8 @@ interface TeamMessage {
 
 /** The Python calls the engine needs; implemented over Pyodide. */
 export interface PythonRuntime {
-  loadBot(botId: number, script: string, seed: number, infoJson: string): void
+  /** Loads a bot and returns its declared loadout as a JSON array. */
+  loadBot(botId: number, script: string, seed: number, infoJson: string): string
   tickBot(botId: number, stateJson: string): string
   destroyBot(botId: number): void
 }
@@ -69,36 +73,68 @@ export class MatchEngine {
   ) {
     this.runtime = runtime
     this.log = log
+    this.botStatus = players.map(() => ({ inert: false, crashed: false, overruns: 0 }))
+
+    // Bots load first so their script-declared loadouts shape the match.
+    const loadouts: ModuleId[][] = players.map(() => [])
+    for (let id = 0; id < players.length; id++) {
+      try {
+        const raw = this.runtime.loadBot(id, players[id].script, seed + id, JSON.stringify({
+          id,
+          name: players[id].name,
+          arena: { width: ARENA_WIDTH, height: ARENA_HEIGHT },
+          match_players: players.length,
+          team: players[id].team ?? null,
+        }))
+        loadouts[id] = this.parseLoadout(id, raw)
+      } catch (error) {
+        this.botStatus[id] = { inert: true, crashed: true, overruns: 0 }
+        this.log({ botId: id, text: describeError(error), kind: 'err' })
+        this.log({ botId: id, text: 'Bot failed to load and will sit idle.', kind: 'info' })
+      }
+    }
+
     this.sim = createMatch(
-      players.map((player) => ({ name: player.name, team: player.team ?? null })),
+      players.map((player, id) => ({
+        name: player.name,
+        team: player.team ?? null,
+        loadout: loadouts[id],
+      })),
       seed,
       map,
     )
     this.intents = this.sim.tanks.map(() => IDLE_INTENTS)
-    this.botStatus = this.sim.tanks.map(() => ({ inert: false, crashed: false, overruns: 0 }))
     this.mailbox = this.sim.tanks.map(() => [])
     this.inbox = this.sim.tanks.map(() => [])
     this.tickOrder = createRng(seed ^ 0x5f3759df).shuffle(this.sim.tanks.map((tank) => tank.id))
+  }
 
-    for (const tank of this.sim.tanks) {
-      try {
-        this.runtime.loadBot(tank.id, players[tank.id].script, seed + tank.id, JSON.stringify({
-          id: tank.id,
-          name: tank.name,
-          arena: { width: this.sim.arena.width, height: this.sim.arena.height },
-          match_players: this.sim.tanks.length,
-          team: tank.team,
-        }))
-      } catch (error) {
-        this.botStatus[tank.id] = { inert: true, crashed: true, overruns: 0 }
-        this.log({ botId: tank.id, text: describeError(error), kind: 'err' })
-        this.log({ botId: tank.id, text: 'Bot failed to load and will sit idle.', kind: 'info' })
-      }
+  /** Validate a bot's declared loadout; an illegal one bricks the bot loudly. */
+  private parseLoadout(botId: number, raw: unknown): ModuleId[] {
+    let modules: string[] = []
+    try {
+      const parsed: unknown = JSON.parse(typeof raw === 'string' ? raw : '[]')
+      if (Array.isArray(parsed)) modules = parsed.map(String)
+    } catch {
+      modules = []
     }
+    const error = validateLoadout(modules)
+    if (error) {
+      this.botStatus[botId] = { inert: true, crashed: true, overruns: 0 }
+      this.log({ botId, text: `Invalid loadout: ${error}`, kind: 'err' })
+      this.log({ botId, text: 'Bot disabled — fix its loadout list.', kind: 'info' })
+      return []
+    }
+    return modules as ModuleId[]
   }
 
   get result(): MatchResult | null {
     return this.matchResult
+  }
+
+  /** The loadout each tank ended up with (for UI display). */
+  loadoutOf(botId: number): ReadonlyArray<ModuleId> {
+    return this.sim.tanks[botId]?.modules ?? []
   }
 
   snapshot(): Snapshot {
@@ -233,7 +269,27 @@ function buildBotState(
       team: tank.team,
       sensor_arc: tank.sensorArc * RAD_TO_DEG,
       sensor_range: sensorRange(tank.sensorArc),
+      max_hp: tankStats(tank.modules).maxHp,
+      modules: tank.modules,
+      shield: tank.modules.includes('shield')
+        ? {
+            active: tank.fx.shieldTicks > 0,
+            absorb_left: tank.fx.shieldHp,
+            cooldown: tank.fx.shieldCooldown / TICK_RATE,
+          }
+        : null,
+      boost: tank.modules.includes('boost')
+        ? {
+            active: tank.fx.boostTicks > 0,
+            fatigued: tank.fx.fatigueTicks > 0,
+            cooldown: tank.fx.boostCooldown / TICK_RATE,
+          }
+        : null,
+      radar: tank.modules.includes('radar')
+        ? { cooldown: tank.fx.pingCooldown / TICK_RATE }
+        : null,
     },
+    ping: buildPingResults(state, tank),
     team: buildTeamState(state, tank, inbox),
     sensor: {
       tanks: reading.tanks.map((t) => {
@@ -269,8 +325,34 @@ function buildBotState(
         bearing: e.bearing * RAD_TO_DEG,
       })),
       enemies_destroyed: events.enemiesDestroyed.map((e) => ({ id: e.id })),
+      pinged: events.pinged.map((p) => ({ x: p.x, y: p.y })),
     },
   }
+}
+
+/** Radar results from last tick's ping, enriched like sensor detections. */
+function buildPingResults(
+  state: SimState,
+  tank: TankState,
+): ReadonlyArray<Record<string, unknown>> | null {
+  const results = state.events[tank.id].pingResults
+  if (results.length === 0) return null
+  return results.map((contact) => {
+    const dx = contact.x - tank.x
+    const dy = contact.y - tank.y
+    const target = state.tanks[contact.id]
+    return {
+      id: contact.id,
+      x: contact.x,
+      y: contact.y,
+      heading: contact.heading * RAD_TO_DEG,
+      speed: contact.speed,
+      distance: Math.hypot(dx, dy),
+      bearing:
+        normalizeDegrees((Math.atan2(dy, dx) - tank.turretHeading) * RAD_TO_DEG),
+      is_teammate: tank.team !== null && target?.team === tank.team,
+    }
+  })
 }
 
 function buildTeamState(

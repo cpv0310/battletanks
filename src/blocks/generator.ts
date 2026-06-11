@@ -51,6 +51,9 @@ export function registerTankGenerators(): void {
       const arc = Number(block.getFieldValue('MODE')) || 90
       return `self.set_sensor(${arc})\n`
     },
+    action_shield: () => 'self.shield()\n',
+    action_ping: () => 'self.ping()\n',
+    action_boost: () => 'self.boost()\n',
     action_say: (block) => `print(${JSON.stringify(String(block.getFieldValue('TEXT')))})\n`,
     control_if: (block, generator) => {
       const cond = generator.valueToCode(block, 'COND', Order.NONE) || 'False'
@@ -132,11 +135,29 @@ export function workspaceToPython(workspace: Blockly.Workspace): string {
     }
   }
 
+  // Ability blocks auto-equip their module so block programs just work.
+  const ABILITY_MODULES: Record<string, string> = {
+    action_shield: 'shield',
+    action_ping: 'radar',
+    action_boost: 'boost',
+  }
+  const modules = [
+    ...new Set(
+      workspace
+        .getAllBlocks(false)
+        .map((block) => ABILITY_MODULES[block.type])
+        .filter((module): module is string => module !== undefined),
+    ),
+  ]
+
   const lines: string[] = [
     'from battletanks import Bot',
     '',
     '',
     'class BlockBot(Bot):',
+    ...(modules.length > 0
+      ? [`${INDENT}loadout = [${modules.map((m) => `'${m}'`).join(', ')}]`, '']
+      : []),
     `${INDENT}def on_tick(self, state):`,
     `${INDENT.repeat(2)}me = state.me`,
     `${INDENT.repeat(2)}target = state.sensor.tanks[0] if state.sensor.tanks else None`,

@@ -28,6 +28,7 @@ Three strictly separated layers; data flows sim → worker → renderer:
 Key invariants:
 - Commands are **persistent intents** (a bot's `drive(1.0)` persists until changed); `fire` is one-shot and reset every tick in `MatchEngine`.
 - Teams: tanks carry `team: number | null` in core; win conditions group by team (solo = own team). The team message channel lives in `MatchEngine` (mailbox delivered next tick, capped per `MAX_TEAM_MESSAGES_*`), never in the core sim — messages don't affect physics.
+- Loadouts: scripts declare `loadout = [...]` (class attribute); `MatchEngine` loads bots **before** `createMatch` so validated loadouts (see `core/loadout.ts`) shape tank stats. Ability state lives in `TankState.fx`; abilities are intent flags processed in `applyAbilities` in `step.ts`. Blocks-mode bots auto-equip modules for the ability blocks they use (see `ABILITY_MODULES` in `blocks/generator.ts`).
 - The turret is mounted on the hull: hull rotation carries the turret (see `applyRotation` in `step.ts`).
 - Bot crashes/budget overruns make that tank **inert**, never abort the match.
 - Screen coordinates: y down, angle 0 = +x, increasing clockwise; bot-facing API uses degrees, core uses radians.

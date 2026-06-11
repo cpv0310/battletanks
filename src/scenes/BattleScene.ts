@@ -3,10 +3,10 @@ import {
   SHELL_RADIUS,
   TANK_COLORS,
   TANK_HEIGHT,
-  TANK_HP,
   TANK_WIDTH,
   sensorRange,
 } from '../config'
+import { tankStats } from '../core/loadout'
 import type { Snapshot } from '../bots/protocol'
 import { senseAll } from '../core/sensor'
 import type { SensorReading, TankState } from '../core/types'
@@ -135,8 +135,25 @@ export class BattleScene extends Phaser.Scene {
     g.fillStyle(color, 1)
     g.fillCircle(tank.x, tank.y, 4)
 
-    // HP bar above the hull.
-    const ratio = tank.hp / TANK_HP
+    // Active shield: a glowing ring around the hull.
+    if (tank.fx.shieldTicks > 0) {
+      g.lineStyle(2.5, 0x80d8ff, 0.9)
+      g.strokeCircle(tank.x, tank.y, 25)
+      g.lineStyle(1, 0x80d8ff, 0.35)
+      g.strokeCircle(tank.x, tank.y, 29)
+    }
+    // Afterburner: a flame-colored wake behind the hull.
+    if (tank.fx.boostTicks > 0) {
+      g.fillStyle(0xffa726, 0.7)
+      g.fillCircle(
+        tank.x - Math.cos(tank.heading) * 24,
+        tank.y - Math.sin(tank.heading) * 24,
+        6,
+      )
+    }
+
+    // HP bar above the hull (scaled to this tank's max HP).
+    const ratio = tank.hp / tankStats(tank.modules).maxHp
     g.fillStyle(0x14161a, 0.8)
     g.fillRect(tank.x - 21, tank.y - 31, 42, 6)
     g.fillStyle(ratio > 0.4 ? 0x66bb6a : 0xef5350, 1)

@@ -87,6 +87,7 @@ export class BattlePanel {
         el('div', { className: 'tank-card-head' }, head),
         bar,
         el('div', { className: 'tank-status', text: 'Ready' }),
+        el('div', { className: 'tank-modules' }),
       ])
       return card
     })
@@ -122,6 +123,10 @@ export class BattlePanel {
             : botState.inert
               ? 'Inert'
               : `${tank.hp} HP`
+      }
+      const modules = card.querySelector<HTMLElement>('.tank-modules')
+      if (modules) {
+        modules.textContent = tank.modules.length > 0 ? tank.modules.join(' · ') : ''
       }
       card.classList.toggle('tank-dead', !tank.alive)
     })

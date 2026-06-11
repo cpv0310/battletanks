@@ -1,6 +1,7 @@
-import { MATCH_TIME_LIMIT_TICKS, MAX_PLAYERS, MIN_PLAYERS, SENSOR_ARC, TANK_HP } from '../config'
-import type { SimState, TankEvents, TankState } from './types'
+import { MATCH_TIME_LIMIT_TICKS, MAX_PLAYERS, MIN_PLAYERS, SENSOR_ARC } from '../config'
+import { IDLE_EFFECTS, type SimState, type TankEvents, type TankState } from './types'
 import { SPAWN_POINTS, createArena, type MapKind } from './arena'
+import { tankStats, type ModuleId } from './loadout'
 import { createRng } from './rng'
 
 export interface MatchResult {
@@ -12,6 +13,8 @@ export interface MatchPlayer {
   readonly name: string
   /** Team number, or null for a solo tank. */
   readonly team: number | null
+  /** Validated loadout modules (empty = stock tank). */
+  readonly loadout?: ReadonlyArray<ModuleId>
 }
 
 const EMPTY_EVENTS: TankEvents = {
@@ -19,6 +22,8 @@ const EMPTY_EVENTS: TankEvents = {
   shellHitEnemy: [],
   collisions: [],
   enemiesDestroyed: [],
+  pinged: [],
+  pingResults: [],
 }
 
 /** Build the initial simulation state for a match. */
@@ -31,6 +36,7 @@ export function createMatch(players: ReadonlyArray<MatchPlayer>, seed: number, m
   const spawns = rng.shuffle(SPAWN_POINTS).slice(0, players.length)
   const tanks: TankState[] = players.map((player, id) => {
     const heading = rng.floatBetween(-Math.PI, Math.PI)
+    const modules = player.loadout ?? []
     return {
       id,
       name: player.name,
@@ -40,11 +46,13 @@ export function createMatch(players: ReadonlyArray<MatchPlayer>, seed: number, m
       heading,
       turretHeading: heading,
       speed: 0,
-      hp: TANK_HP,
+      hp: tankStats(modules).maxHp,
       cooldown: 0,
       alive: true,
       blocked: false,
       sensorArc: SENSOR_ARC,
+      modules,
+      fx: IDLE_EFFECTS,
     }
   })
   return {

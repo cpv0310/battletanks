@@ -271,6 +271,93 @@ describe('step: sensor focus', () => {
   })
 })
 
+describe('step: loadout abilities', () => {
+  it('shield absorbs damage, blocks firing, and a broken shield drops', () => {
+    const shielded = makeTank({ id: 0, x: 300, y: 500, modules: ['shield'] })
+    const enemy = makeTank({ id: 1, x: 900, y: 500 })
+    const state = makeState([shielded, enemy])
+
+    const up = step(state, intentsFor(state.tanks, { 0: { shield: true, fire: 2 } }))
+    expect(up.tanks[0].fx.shieldTicks).toBeGreaterThan(0)
+    expect(up.tanks[0].fx.shieldHp).toBe(25)
+    expect(up.shells).toHaveLength(0) // cannot fire while shielded
+
+    // A 20-damage shell: fully absorbed, hp untouched, 5 absorption left.
+    const incoming = makeState(
+      [up.tanks[0], enemy],
+      { shells: [{ id: 0, ownerId: 1, x: 310, y: 500, heading: Math.PI, power: 2 }] },
+    )
+    const hit = step(incoming, intentsFor(incoming.tanks))
+    expect(hit.tanks[0].hp).toBe(100)
+    expect(hit.tanks[0].fx.shieldHp).toBe(5)
+
+    // Next 20-damage shell: 5 absorbed, 15 to hp, shield drops immediately.
+    const second = makeState(
+      [hit.tanks[0], enemy],
+      { shells: [{ id: 1, ownerId: 1, x: 310, y: 500, heading: Math.PI, power: 2 }] },
+    )
+    const broken = step(second, intentsFor(second.tanks))
+    expect(broken.tanks[0].hp).toBe(85)
+    expect(broken.tanks[0].fx.shieldHp).toBe(0)
+    expect(broken.tanks[0].fx.shieldTicks).toBe(0)
+  })
+
+  it('abilities are no-ops without the module', () => {
+    const state = makeState([makeTank({ id: 0 })])
+    const next = step(
+      state,
+      intentsFor(state.tanks, { 0: { shield: true, boost: true, ping: true } }),
+    )
+    expect(next.tanks[0].fx).toEqual(state.tanks[0].fx)
+    expect(next.events[0].pingResults).toHaveLength(0)
+  })
+
+  it('boost speeds the tank up, then fatigue slows it down', () => {
+    const booster = makeTank({ id: 0, x: 100, y: 500, modules: ['boost'] })
+    const state = makeState([booster])
+    const boosted = step(state, intentsFor(state.tanks, { 0: { boost: true, drive: 1 } }))
+    expect(boosted.tanks[0].speed).toBeCloseTo(TANK_FORWARD_SPEED * 1.8)
+    expect(boosted.tanks[0].fx.boostCooldown).toBeGreaterThan(0)
+
+    // Run the boost out; fatigue should kick in.
+    let current = boosted
+    for (let i = 0; i < 120; i++) {
+      current = step(current, intentsFor(current.tanks, { 0: { drive: 1 } }))
+    }
+    expect(current.tanks[0].fx.boostTicks).toBe(0)
+    expect(current.tanks[0].fx.fatigueTicks).toBeGreaterThan(0)
+    expect(current.tanks[0].speed).toBeCloseTo(TANK_FORWARD_SPEED * 0.6)
+  })
+
+  it('radar ping reveals everyone to the pinger and the pinger to everyone', () => {
+    const pinger = makeTank({ id: 0, x: 100, y: 100, modules: ['radar'] })
+    const far = makeTank({ id: 1, x: 1100, y: 900 }) // far outside any sensor
+    const dead = makeTank({ id: 2, x: 600, y: 500, alive: false, hp: 0 })
+    const state = makeState([pinger, far, dead])
+    const next = step(state, intentsFor(state.tanks, { 0: { ping: true } }))
+    expect(next.events[0].pingResults).toEqual([
+      { id: 1, x: 1100, y: 900, heading: 0, speed: 0 },
+    ])
+    expect(next.events[1].pinged).toEqual([{ x: 100, y: 100 }])
+    expect(next.tanks[0].fx.pingCooldown).toBeGreaterThan(0)
+
+    // On cooldown: a second ping does nothing.
+    const again = step(next, intentsFor(next.tanks, { 0: { ping: true } }))
+    expect(again.events[0].pingResults).toHaveLength(0)
+  })
+
+  it('engine and gyro modules change movement and turret physics', () => {
+    const tuned = makeTank({ id: 0, x: 100, y: 500, modules: ['engine', 'gyro'] })
+    const state = makeState([tuned])
+    const next = step(
+      state,
+      intentsFor(state.tanks, { 0: { drive: 1, turretTurn: { kind: 'rate', value: 1 } } }),
+    )
+    expect(next.tanks[0].speed).toBeCloseTo(TANK_FORWARD_SPEED * 1.25)
+    expect(next.tanks[0].turretHeading).toBeCloseTo(TURRET_ROTATION_SPEED * 1.5 * TICK_SECONDS)
+  })
+})
+
 describe('step: determinism and immutability', () => {
   it('does not mutate the input state', () => {
     const state = makeState([makeTank({ id: 0 }), makeTank({ id: 1, x: 200, y: 200 })])

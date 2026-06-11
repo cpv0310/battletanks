@@ -1,6 +1,6 @@
 import { TANK_HP } from '../config'
 import type { Rect, SimState, TankEvents, TankIntents, TankState } from './types'
-import { IDLE_INTENTS } from './types'
+import { IDLE_EFFECTS, IDLE_INTENTS } from './types'
 
 export function makeTank(overrides: Partial<TankState> & { id: number }): TankState {
   return {
@@ -16,6 +16,8 @@ export function makeTank(overrides: Partial<TankState> & { id: number }): TankSt
     alive: true,
     blocked: false,
     sensorArc: Math.PI / 2,
+    modules: [],
+    fx: IDLE_EFFECTS,
     ...overrides,
   }
 }
@@ -25,6 +27,8 @@ const EMPTY_EVENTS: TankEvents = {
   shellHitEnemy: [],
   collisions: [],
   enemiesDestroyed: [],
+  pinged: [],
+  pingResults: [],
 }
 
 export function makeState(

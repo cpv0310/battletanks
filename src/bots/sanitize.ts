@@ -49,6 +49,9 @@ export function sanitizeBotOutput(rawJson: string): BotOutput {
   if (isFiniteNumber(record.sensor_arc)) {
     intents.sensorArc = clamp(record.sensor_arc * DEG_TO_RAD, SENSOR_MIN_ARC, SENSOR_MAX_ARC)
   }
+  if (record.ping === true) intents.ping = true
+  if (record.shield === true) intents.shield = true
+  if (record.boost === true) intents.boost = true
 
   return { intents, teamMessages: parseTeamMessages(record.team_messages) }
 }

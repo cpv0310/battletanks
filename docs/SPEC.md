@@ -130,6 +130,25 @@ DPS is flat across powers, so the choice is tempo, not raw output.
     heading, if within range.
 - To search the battlefield, bots sweep the turret (and thus the sensor arc).
 
+### 4.5 Loadouts — point-buy modules
+
+Each tank has **8 loadout points**, declared in its script as a class
+attribute (`loadout = ['armor', 'shield', 'gyro']`). Every module is priced
+with a coupled cost so no build is strictly better. An illegal loadout
+(unknown module, duplicate, or over budget) disables the bot with an error.
+
+| Module | Cost | Effect |
+|---|---|---|
+| `engine` | 3 | +25% drive speed, −20 max HP |
+| `armor` | 3 | +40 max HP, −20% drive speed |
+| `gyro` | 2 | +50% turret rotation speed |
+| `radar` | 3 | `ping()`: next tick, `state.ping` lists **every** living tank (ignores walls/arc). 5 s cooldown — and every tank on the field hears the ping (`events.pinged` gets the pinger's position) |
+| `shield` | 3 | `shield()`: absorb the next 25 damage for up to 3 s; the cannon is locked while it is up; a depleted shield drops instantly. 10 s cooldown |
+| `boost` | 2 | `boost()`: +80% speed for 2 s, then −40% fatigue for 2 s. 10 s cooldown |
+
+In blocks mode, using an ability block (shield / radar ping / afterburner)
+automatically equips its module.
+
 ## 5. Simulation Model
 
 - The simulation is **tick-based and deterministic**: fixed timestep of
@@ -183,12 +202,13 @@ class HunterBot(Bot):
 | Field | Contents |
 |---|---|
 | `state.tick` | current tick number |
-| `state.me` | `x`, `y`, `heading`, `turret_heading` (world), `turret_relative` (vs hull), `speed`, `hp`, `cooldown` (seconds until cannon ready), `stuck` (movement was obstructed last tick), `at_wall` (hull touching an arena wall), `wall_bearing` (bearing to the touched wall relative to the hull, or `None`), `team` (team number or `None`) |
+| `state.me` | `x`, `y`, `heading`, `turret_heading` (world), `turret_relative` (vs hull), `speed`, `hp`, `max_hp`, `cooldown` (seconds until cannon ready), `stuck`, `at_wall`, `wall_bearing`, `team`, `sensor_arc`/`sensor_range`, `modules`, and ability status objects `shield`/`boost`/`radar` (each `None` unless equipped) |
+| `state.ping` | radar results from last tick's `ping()` (each: `id`, `x`, `y`, `heading`, `speed`, `distance`, `bearing`, `is_teammate`) or `None` |
 | `state.team` | `None` for solo tanks; otherwise `id`, `mates` (each: `id`, `name`, `alive`), and `messages` received from teammates (each: `from_id`, `from_name`, `tick`, `data`) |
 | `state.sensor.tanks` | list of detected tanks: `id`, `x`, `y`, `is_teammate`, `distance`, `bearing`, `heading`, `speed` |
 | `state.sensor.obstacles` | list of visible obstacles: `distance`, `bearing`, `rect` |
 | `state.sensor.wall` | wall intersection along turret heading (`distance`, `bearing`) or `None` |
-| `state.events` | events since last tick: `hit_by_shell`, `shell_hit_enemy`, `collision`, `enemy_destroyed` |
+| `state.events` | events since last tick: `hit_by_shell`, `shell_hit_enemy`, `collisions`, `enemies_destroyed`, `pinged` (positions radar pings came from) |
 | `state.alive_count` | number of tanks still alive |
 
 ### 6.3 Commands
@@ -201,6 +221,7 @@ class HunterBot(Bot):
 | `self.turn_to(deg)` / `self.turn_turret_to(deg)` | turn toward an absolute world heading (engine steers at max rate and stops there) |
 | `self.fire(power=2)` | fire if cooldown is 0 (one-shot); power 1–3 scales damage/speed/cooldown (§4.3) |
 | `self.set_sensor(arc_deg)` | set sensor arc 45–135°, trading width for range (§4.4); persistent |
+| `self.ping()` / `self.shield()` / `self.boost()` | trigger loadout abilities (§4.5); no-ops without the module |
 | `self.rng` | seeded `random.Random` instance for reproducible randomness |
 
 Angles in the API are **degrees**; distances are pixels; speeds are fractions of

@@ -1,30 +1,43 @@
-# Team Hunter — hunts as a pack. When it spots an enemy it sends the
-# enemy's location to its team; when a teammate reports one, it converges
-# on that spot. Works solo too (it just hunts alone).
+# Team Hunter — a fast radar scout that hunts as a pack. It pings the
+# radar to find enemies anywhere on the field, shares every contact on
+# the team channel, and converges on teammates' reports. Works solo too.
 import math
 
 from battletanks import Bot
 
 
 class TeamHunter(Bot):
+    loadout = ['radar', 'engine']  # 3 + 3 = 6 of 8 points
+
     def on_start(self, info):
-        self.goal = None        # (x, y) reported by a teammate
+        self.goal = None        # (x, y) of the latest known enemy
         self.goal_tick = -1000
+
+    def set_goal(self, state, x, y, share):
+        self.goal = (x, y)
+        self.goal_tick = state.tick
+        if share and state.team is not None:
+            self.send_team({'x': x, 'y': y})
 
     def on_tick(self, state):
         me = state.me
 
-        # Listen to the team channel for reported enemy positions.
+        # Teammates' reports.
         if state.team is not None:
             for msg in state.team.messages:
-                self.goal = (msg.data.x, msg.data.y)
-                self.goal_tick = state.tick
+                self.set_goal(state, msg.data.x, msg.data.y, share=False)
+
+        # Radar contacts (from last tick's ping): chase the nearest enemy.
+        if state.ping:
+            contacts = [c for c in state.ping if not c.is_teammate]
+            if contacts:
+                nearest = min(contacts, key=lambda c: c.distance)
+                self.set_goal(state, nearest.x, nearest.y, share=True)
 
         enemies = [t for t in state.sensor.tanks if not t.is_teammate]
         if enemies:
             target = enemies[0]
-            if state.team is not None:
-                self.send_team({'x': target.x, 'y': target.y})
+            self.set_goal(state, target.x, target.y, share=True)
             aim = me.turret_heading + target.bearing
             self.turn_turret_to(aim)
             self.turn_to(aim)
@@ -39,8 +52,8 @@ class TeamHunter(Bot):
             self.turn_turret(1.0)
             return
 
-        # No enemy in sight: converge on the latest team report for a while.
-        if self.goal is not None and state.tick - self.goal_tick < 360:
+        fresh = self.goal is not None and state.tick - self.goal_tick < 360
+        if fresh:
             dx = self.goal[0] - me.x
             dy = self.goal[1] - me.y
             if math.hypot(dx, dy) > 80:
@@ -48,7 +61,9 @@ class TeamHunter(Bot):
                 self.drive(1.0)
                 self.turn_turret(0.8)
                 return
+        elif me.radar.cooldown == 0:
+            # Nothing to hunt: light up the radar (everyone will hear it).
+            self.ping()
 
-        # Patrol: cruise and sweep.
         self.drive(0.6)
         self.turn_turret(1.0)

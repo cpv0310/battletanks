@@ -83,6 +83,25 @@ export const BOT_OVERRUN_LIMIT = 120
 export const MAX_TEAM_MESSAGES_PER_TICK = 4
 export const MAX_TEAM_MESSAGE_BYTES = 512
 
+/** Loadout: points each tank may spend on modules (declared in its script). */
+export const LOADOUT_POINTS = 8
+
+export const ENGINE_SPEED_MULT = 1.25
+export const ENGINE_HP_PENALTY = 20
+export const ARMOR_HP_BONUS = 40
+export const ARMOR_SPEED_MULT = 0.8
+export const GYRO_TURRET_MULT = 1.5
+
+export const PING_COOLDOWN_TICKS = 5 * TICK_RATE
+export const SHIELD_ABSORB = 25
+export const SHIELD_DURATION_TICKS = 3 * TICK_RATE
+export const SHIELD_COOLDOWN_TICKS = 10 * TICK_RATE
+export const BOOST_SPEED_MULT = 1.8
+export const BOOST_DURATION_TICKS = 2 * TICK_RATE
+export const BOOST_FATIGUE_MULT = 0.6
+export const BOOST_FATIGUE_TICKS = 2 * TICK_RATE
+export const BOOST_COOLDOWN_TICKS = 10 * TICK_RATE
+
 export const TANK_COLORS = [
   0x4caf50, 0xef5350, 0x42a5f5, 0xffca28, 0xab47bc, 0x26c6da, 0xff7043, 0xd4e157,
 ] as const

@@ -1,6 +1,33 @@
+import type { ModuleId } from './loadout'
+
 export interface Vec2 {
   readonly x: number
   readonly y: number
+}
+
+/** Live ability state for one tank (all zero when nothing is active). */
+export interface TankEffects {
+  /** Damage absorption remaining while the shield is up. */
+  readonly shieldHp: number
+  /** Ticks of shield uptime remaining. */
+  readonly shieldTicks: number
+  /** Ticks of afterburner speed remaining. */
+  readonly boostTicks: number
+  /** Ticks of post-boost fatigue remaining. */
+  readonly fatigueTicks: number
+  readonly pingCooldown: number
+  readonly shieldCooldown: number
+  readonly boostCooldown: number
+}
+
+export const IDLE_EFFECTS: TankEffects = {
+  shieldHp: 0,
+  shieldTicks: 0,
+  boostTicks: 0,
+  fatigueTicks: 0,
+  pingCooldown: 0,
+  shieldCooldown: 0,
+  boostCooldown: 0,
 }
 
 export interface Rect {
@@ -37,6 +64,10 @@ export interface TankState {
   readonly blocked: boolean
   /** Sensor arc in radians; range scales inversely (see config.sensorRange). */
   readonly sensorArc: number
+  /** Modules this tank bought with its loadout points. */
+  readonly modules: ReadonlyArray<ModuleId>
+  /** Live ability state. */
+  readonly fx: TankEffects
 }
 
 export interface ShellState {
@@ -62,11 +93,23 @@ export interface CollisionEvent {
   readonly bearing: number
 }
 
+export interface PingContact {
+  readonly id: number
+  readonly x: number
+  readonly y: number
+  readonly heading: number
+  readonly speed: number
+}
+
 export interface TankEvents {
   readonly hitByShell: ReadonlyArray<HitByShellEvent>
   readonly shellHitEnemy: ReadonlyArray<{ readonly targetId: number }>
   readonly collisions: ReadonlyArray<CollisionEvent>
   readonly enemiesDestroyed: ReadonlyArray<{ readonly id: number }>
+  /** Someone fired a radar ping from this position (everyone hears it). */
+  readonly pinged: ReadonlyArray<Vec2>
+  /** This tank's own radar ping results: every living tank, ignoring LOS. */
+  readonly pingResults: ReadonlyArray<PingContact>
 }
 
 export interface SimState {
@@ -92,6 +135,10 @@ export interface TankIntents {
   readonly fire: number
   /** Desired sensor arc in radians (persistent). */
   readonly sensorArc: number
+  /** One-shot ability triggers (no-ops without the matching module). */
+  readonly ping: boolean
+  readonly shield: boolean
+  readonly boost: boolean
 }
 
 export const IDLE_INTENTS: TankIntents = {
@@ -100,6 +147,9 @@ export const IDLE_INTENTS: TankIntents = {
   turretTurn: { kind: 'rate', value: 0 },
   fire: 0,
   sensorArc: Math.PI / 2,
+  ping: false,
+  shield: false,
+  boost: false,
 }
 
 export interface TankDetection {

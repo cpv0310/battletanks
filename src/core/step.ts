@@ -1,23 +1,32 @@
 import {
+  BOOST_COOLDOWN_TICKS,
+  BOOST_DURATION_TICKS,
+  BOOST_FATIGUE_MULT,
+  BOOST_FATIGUE_TICKS,
+  BOOST_SPEED_MULT,
   HULL_ROTATION_SPEED,
   MAX_FIRE_POWER,
   MIN_FIRE_POWER,
   MUZZLE_OFFSET,
+  PING_COOLDOWN_TICKS,
   SENSOR_MAX_ARC,
   SENSOR_MIN_ARC,
-  TANK_FORWARD_SPEED,
+  SHIELD_ABSORB,
+  SHIELD_COOLDOWN_TICKS,
+  SHIELD_DURATION_TICKS,
   TANK_RADIUS,
-  TANK_REVERSE_SPEED,
   TICK_SECONDS,
-  TURRET_ROTATION_SPEED,
   cannonCooldownTicks,
   shellDamage,
   shellSpeed,
 } from '../config'
+import { tankStats, type ModuleId } from './loadout'
 import type {
   CollisionEvent,
+  PingContact,
   ShellState,
   SimState,
+  TankEffects,
   TankEvents,
   TankIntents,
   TankState,
@@ -42,6 +51,8 @@ interface MutableEvents {
   shellHitEnemy: { targetId: number }[]
   collisions: CollisionEvent[]
   enemiesDestroyed: { id: number }[]
+  pinged: Vec2[]
+  pingResults: PingContact[]
 }
 
 /**
@@ -54,9 +65,14 @@ export function step(state: SimState, intents: ReadonlyArray<TankIntents>): SimS
     shellHitEnemy: [],
     collisions: [],
     enemiesDestroyed: [],
+    pinged: [],
+    pingResults: [],
   }))
 
-  const rotated = state.tanks.map((tank) =>
+  const energized = state.tanks.map((tank) =>
+    tank.alive ? applyAbilities(tank, intents[tank.id], state.tanks, events) : tank,
+  )
+  const rotated = energized.map((tank) =>
     tank.alive ? applyRotation(tank, intents[tank.id]) : tank,
   )
   const moved = applyMovement(state, rotated, intents, events)
@@ -78,6 +94,66 @@ export function step(state: SimState, intents: ReadonlyArray<TankIntents>): SimS
   }
 }
 
+/** Tick down effect timers/cooldowns, then trigger requested abilities. */
+function applyAbilities(
+  tank: TankState,
+  intents: TankIntents,
+  allTanks: ReadonlyArray<TankState>,
+  events: MutableEvents[],
+): TankState {
+  let fx = tickEffects(tank.fx)
+  const has = (id: ModuleId) => tank.modules.includes(id)
+
+  if (intents.ping && has('radar') && fx.pingCooldown === 0) {
+    fx = { ...fx, pingCooldown: PING_COOLDOWN_TICKS }
+    for (const other of allTanks) {
+      if (!other.alive || other.id === tank.id) continue
+      events[tank.id].pingResults.push({
+        id: other.id,
+        x: other.x,
+        y: other.y,
+        heading: other.heading,
+        speed: other.speed,
+      })
+      // A ping is loud: every tank on the field learns where it came from.
+      events[other.id].pinged.push({ x: tank.x, y: tank.y })
+    }
+  }
+  if (intents.shield && has('shield') && fx.shieldCooldown === 0 && fx.shieldTicks === 0) {
+    fx = {
+      ...fx,
+      shieldTicks: SHIELD_DURATION_TICKS,
+      shieldHp: SHIELD_ABSORB,
+      shieldCooldown: SHIELD_COOLDOWN_TICKS,
+    }
+  }
+  if (
+    intents.boost &&
+    has('boost') &&
+    fx.boostCooldown === 0 &&
+    fx.boostTicks === 0 &&
+    fx.fatigueTicks === 0
+  ) {
+    fx = { ...fx, boostTicks: BOOST_DURATION_TICKS, boostCooldown: BOOST_COOLDOWN_TICKS }
+  }
+  return fx === tank.fx ? tank : { ...tank, fx }
+}
+
+function tickEffects(fx: TankEffects): TankEffects {
+  const boostExpiring = fx.boostTicks === 1
+  const shieldExpiring = fx.shieldTicks === 1
+  return {
+    shieldHp: shieldExpiring ? 0 : fx.shieldHp,
+    shieldTicks: Math.max(0, fx.shieldTicks - 1),
+    boostTicks: Math.max(0, fx.boostTicks - 1),
+    // Fatigue begins the moment the afterburner cuts out.
+    fatigueTicks: boostExpiring ? BOOST_FATIGUE_TICKS : Math.max(0, fx.fatigueTicks - 1),
+    pingCooldown: Math.max(0, fx.pingCooldown - 1),
+    shieldCooldown: Math.max(0, fx.shieldCooldown - 1),
+    boostCooldown: Math.max(0, fx.boostCooldown - 1),
+  }
+}
+
 function turnRate(command: TurnCommand, current: number, maxRate: number): number {
   if (command.kind === 'rate') return clamp(command.value, -1, 1) * maxRate
   const diff = normalizeAngle(command.target - current)
@@ -85,15 +161,15 @@ function turnRate(command: TurnCommand, current: number, maxRate: number): numbe
 }
 
 function applyRotation(tank: TankState, intents: TankIntents): TankState {
+  const turretSpeed = tankStats(tank.modules).turretRotationSpeed
   const hullDelta = turnRate(intents.turn, tank.heading, HULL_ROTATION_SPEED) * TICK_SECONDS
   const heading = normalizeAngle(tank.heading + hullDelta)
   // The turret is mounted on the hull, so hull rotation carries it along.
   const carried = normalizeAngle(tank.turretHeading + hullDelta)
-  const turretDelta =
-    turnRate(intents.turretTurn, carried, TURRET_ROTATION_SPEED) * TICK_SECONDS
+  const turretDelta = turnRate(intents.turretTurn, carried, turretSpeed) * TICK_SECONDS
   const turretHeading =
     intents.turretTurn.kind === 'to'
-      ? stepAngleToward(carried, intents.turretTurn.target, TURRET_ROTATION_SPEED * TICK_SECONDS)
+      ? stepAngleToward(carried, intents.turretTurn.target, turretSpeed * TICK_SECONDS)
       : normalizeAngle(carried + turretDelta)
   const sensorArc = clamp(intents.sensorArc, SENSOR_MIN_ARC, SENSOR_MAX_ARC)
   return { ...tank, heading, turretHeading, sensorArc }
@@ -108,8 +184,11 @@ function applyMovement(
   const positions: TankState[] = [...tanks]
   for (const tank of tanks) {
     if (!tank.alive) continue
+    const stats = tankStats(tank.modules)
+    const boostMult =
+      tank.fx.boostTicks > 0 ? BOOST_SPEED_MULT : tank.fx.fatigueTicks > 0 ? BOOST_FATIGUE_MULT : 1
     const drive = clamp(intents[tank.id].drive, -1, 1)
-    const speed = drive * (drive >= 0 ? TANK_FORWARD_SPEED : TANK_REVERSE_SPEED)
+    const speed = drive * (drive >= 0 ? stats.forwardSpeed : stats.reverseSpeed) * boostMult
     if (speed === 0) {
       positions[tank.id] = { ...positions[tank.id], speed: 0, blocked: false }
       continue
@@ -200,7 +279,8 @@ function applyFiring(
   const updated = tanks.map((tank) => {
     if (!tank.alive) return tank
     const cooldown = Math.max(0, tank.cooldown - 1)
-    if (intents[tank.id].fire > 0 && cooldown === 0) {
+    // The shield interrupts the cannon while it is up.
+    if (intents[tank.id].fire > 0 && cooldown === 0 && tank.fx.shieldTicks === 0) {
       const power = clamp(intents[tank.id].fire, MIN_FIRE_POWER, MAX_FIRE_POWER)
       const muzzle = velocityFromAngle(tank.turretHeading, MUZZLE_OFFSET)
       shells.push({
@@ -258,7 +338,15 @@ function moveShells(
 
   const updatedTanks = tanks.map((tank) => {
     const taken = damage.get(tank.id)
-    return taken ? { ...tank, hp: Math.max(0, tank.hp - taken) } : tank
+    if (!taken) return tank
+    const absorbed = Math.min(tank.fx.shieldHp, taken)
+    const shieldHp = tank.fx.shieldHp - absorbed
+    // A broken shield drops immediately, freeing the cannon.
+    const fx =
+      absorbed > 0
+        ? { ...tank.fx, shieldHp, shieldTicks: shieldHp === 0 ? 0 : tank.fx.shieldTicks }
+        : tank.fx
+    return { ...tank, hp: Math.max(0, tank.hp - (taken - absorbed)), fx }
   })
   return { tanks: updatedTanks, shells: surviving }
 }
@@ -312,5 +400,7 @@ function toReadonlyEvents(events: MutableEvents): TankEvents {
     shellHitEnemy: events.shellHitEnemy,
     collisions: events.collisions,
     enemiesDestroyed: events.enemiesDestroyed,
+    pinged: events.pinged,
+    pingResults: events.pingResults,
   }
 }

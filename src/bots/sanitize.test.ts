@@ -29,6 +29,17 @@ describe('sanitizeBotOutput', () => {
     expect(sanitizeBotOutput('{"fire": -1}').intents.fire).toBeUndefined()
   })
 
+  it('parses ability triggers strictly as booleans', () => {
+    const { intents } = sanitizeBotOutput('{"ping": true, "shield": true, "boost": true}')
+    expect(intents.ping).toBe(true)
+    expect(intents.shield).toBe(true)
+    expect(intents.boost).toBe(true)
+    const loose = sanitizeBotOutput('{"ping": 1, "shield": "yes", "boost": null}').intents
+    expect(loose.ping).toBeUndefined()
+    expect(loose.shield).toBeUndefined()
+    expect(loose.boost).toBeUndefined()
+  })
+
   it('converts sensor_arc degrees to clamped radians', () => {
     const narrow = sanitizeBotOutput('{"sensor_arc": 45}').intents.sensorArc
     expect(narrow).toBeCloseTo(Math.PI / 4)

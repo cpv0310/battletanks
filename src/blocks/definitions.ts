@@ -171,6 +171,33 @@ export function defineTankBlocks(): void {
       tooltip: 'Trade sensor width for range. Stays until changed.',
     },
     {
+      type: 'action_shield',
+      message0: 'raise my shield',
+      previousStatement: null,
+      nextStatement: null,
+      colour: ACTION_COLOUR,
+      tooltip:
+        'Absorb the next 25 damage for 3s (cannot fire while up; 10s cooldown). Using this block equips the shield module (3 loadout points).',
+    },
+    {
+      type: 'action_ping',
+      message0: 'radar ping',
+      previousStatement: null,
+      nextStatement: null,
+      colour: ACTION_COLOUR,
+      tooltip:
+        'See every tank on the field for one tick — but everyone hears your ping. Equips the radar module (3 loadout points). 5s cooldown.',
+    },
+    {
+      type: 'action_boost',
+      message0: 'afterburner!',
+      previousStatement: null,
+      nextStatement: null,
+      colour: ACTION_COLOUR,
+      tooltip:
+        '+80% speed for 2s, then 2s of fatigue. Equips the afterburner module (2 loadout points). 10s cooldown.',
+    },
+    {
       type: 'action_say',
       message0: 'say %1',
       args0: [{ type: 'field_input', name: 'TEXT', text: 'hello' }],
@@ -274,6 +301,9 @@ export const TANK_TOOLBOX = {
         { kind: 'block', type: 'action_chase' },
         { kind: 'block', type: 'action_fire' },
         { kind: 'block', type: 'action_sensor' },
+        { kind: 'block', type: 'action_shield' },
+        { kind: 'block', type: 'action_ping' },
+        { kind: 'block', type: 'action_boost' },
         { kind: 'block', type: 'action_say' },
       ],
     },

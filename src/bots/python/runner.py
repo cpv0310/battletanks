@@ -70,7 +70,11 @@ def load_bot(bot_id, source, seed, info_json):
     _bots[bot_id] = bot
     _prev_detected[bot_id] = set()
     bot.on_start(_wrap(json.loads(info_json)))
-    return True
+
+    loadout = getattr(bot, 'loadout', []) or []
+    if not isinstance(loadout, (list, tuple)):
+        raise ValueError('loadout must be a list of module names')
+    return json.dumps([str(module) for module in loadout])
 
 
 def tick_bot(bot_id, state_json):

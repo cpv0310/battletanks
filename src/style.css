@@ -363,6 +363,14 @@ body {
   color: var(--muted);
 }
 
+.tank-modules {
+  margin-top: 3px;
+  font-size: 10px;
+  color: #7986cb;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 /* --- match controls ----------------------------------------------------- */
 
 .match-controls {

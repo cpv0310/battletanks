@@ -52,7 +52,7 @@ export function createPythonRuntime(
 
   return {
     loadBot: (botId, script, seed, infoJson) =>
-      withBot(botId, () => void loadBot(botId, script, seed, infoJson)),
+      withBot(botId, () => String(loadBot(botId, script, seed, infoJson))),
     tickBot: (botId, stateJson) => withBot(botId, () => String(tickBot(botId, stateJson))),
     destroyBot: (botId) => withBot(botId, () => void destroyBot(botId)),
   }
