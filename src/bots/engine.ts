@@ -1,0 +1,222 @@
+import { BOT_BUDGET_MS, BOT_OVERRUN_LIMIT, TICK_RATE } from '../config'
+import { createMatch, evaluateMatch, type MatchResult } from '../core/match'
+import type { MapKind } from '../core/arena'
+import { createRng } from '../core/rng'
+import { senseAll } from '../core/sensor'
+import { step } from '../core/step'
+import {
+  IDLE_INTENTS,
+  type SensorReading,
+  type SimState,
+  type TankIntents,
+  type TankState,
+} from '../core/types'
+import type { BotStatus, LogEntry, PlayerConfig, Snapshot } from './protocol'
+import { sanitizeCommands } from './sanitize'
+
+/** The Python calls the engine needs; implemented over Pyodide. */
+export interface PythonRuntime {
+  loadBot(botId: number, script: string, seed: number, infoJson: string): void
+  tickBot(botId: number, stateJson: string): string
+  destroyBot(botId: number): void
+}
+
+interface MutableBotStatus {
+  inert: boolean
+  crashed: boolean
+  overruns: number
+}
+
+const RAD_TO_DEG = 180 / Math.PI
+
+/**
+ * Drives a full match: builds per-bot state, runs each bot through the
+ * Python runtime, sanitizes commands, and steps the deterministic core sim.
+ * Runtime-agnostic so it can run in the worker (real Pyodide) and in tests.
+ */
+export class MatchEngine {
+  private readonly runtime: PythonRuntime
+  private readonly log: (entry: LogEntry) => void
+  private readonly tickOrder: ReadonlyArray<number>
+  private sim: SimState
+  private intents: TankIntents[]
+  private botStatus: MutableBotStatus[]
+  private matchResult: MatchResult | null = null
+
+  constructor(
+    runtime: PythonRuntime,
+    players: ReadonlyArray<PlayerConfig>,
+    seed: number,
+    map: MapKind,
+    log: (entry: LogEntry) => void,
+  ) {
+    this.runtime = runtime
+    this.log = log
+    this.sim = createMatch(players.map((player) => player.name), seed, map)
+    this.intents = this.sim.tanks.map(() => IDLE_INTENTS)
+    this.botStatus = this.sim.tanks.map(() => ({ inert: false, crashed: false, overruns: 0 }))
+    this.tickOrder = createRng(seed ^ 0x5f3759df).shuffle(this.sim.tanks.map((tank) => tank.id))
+
+    for (const tank of this.sim.tanks) {
+      try {
+        this.runtime.loadBot(tank.id, players[tank.id].script, seed + tank.id, JSON.stringify({
+          id: tank.id,
+          name: tank.name,
+          arena: { width: this.sim.arena.width, height: this.sim.arena.height },
+          match_players: this.sim.tanks.length,
+        }))
+      } catch (error) {
+        this.botStatus[tank.id] = { inert: true, crashed: true, overruns: 0 }
+        this.log({ botId: tank.id, text: describeError(error), kind: 'err' })
+        this.log({ botId: tank.id, text: 'Bot failed to load and will sit idle.', kind: 'info' })
+      }
+    }
+  }
+
+  get result(): MatchResult | null {
+    return this.matchResult
+  }
+
+  snapshot(): Snapshot {
+    return {
+      sim: this.sim,
+      botStatus: this.botStatus.map((status): BotStatus => ({ ...status })),
+      result: this.matchResult,
+    }
+  }
+
+  advance(ticks: number): void {
+    for (let i = 0; i < ticks && this.matchResult === null; i++) {
+      this.runOneTick()
+    }
+  }
+
+  private runOneTick(): void {
+    const readings = senseAll(this.sim)
+    const aliveCount = this.sim.tanks.filter((tank) => tank.alive).length
+
+    // fire() is one-shot: cleared every tick before bots run.
+    this.intents = this.intents.map((intent) => ({ ...intent, fire: false }))
+
+    for (const botId of this.tickOrder) {
+      const tank = this.sim.tanks[botId]
+      if (!tank.alive || this.botStatus[botId].inert) continue
+      this.runBotTick(botId, tank, readings[botId], aliveCount)
+    }
+
+    const before = this.sim.tanks
+    this.sim = step(this.sim, this.intents)
+    this.notifyDeaths(before, this.sim.tanks)
+    this.matchResult = evaluateMatch(this.sim)
+  }
+
+  private runBotTick(
+    botId: number,
+    tank: TankState,
+    reading: SensorReading,
+    aliveCount: number,
+  ): void {
+    const stateJson = JSON.stringify(buildBotState(this.sim, tank, reading, aliveCount))
+    const started = performance.now()
+    try {
+      const raw = this.runtime.tickBot(botId, stateJson)
+      const commands = sanitizeCommands(typeof raw === 'string' ? raw : '{}')
+      this.intents[botId] = { ...this.intents[botId], ...commands }
+    } catch (error) {
+      this.botStatus[botId] = { ...this.botStatus[botId], inert: true, crashed: true }
+      this.log({ botId, text: describeError(error), kind: 'err' })
+      this.log({ botId, text: 'Bot crashed and is now inert.', kind: 'info' })
+      return
+    }
+    this.trackBudget(botId, performance.now() - started)
+  }
+
+  private trackBudget(botId: number, elapsedMs: number): void {
+    const status = this.botStatus[botId]
+    if (elapsedMs <= BOT_BUDGET_MS) {
+      status.overruns = 0
+      return
+    }
+    status.overruns += 1
+    if (status.overruns >= BOT_OVERRUN_LIMIT) {
+      this.botStatus[botId] = { ...status, inert: true }
+      this.log({
+        botId,
+        text: `Exceeded the ${BOT_BUDGET_MS}ms budget ${BOT_OVERRUN_LIMIT} ticks in a row; bot is now inert.`,
+        kind: 'info',
+      })
+    }
+  }
+
+  private notifyDeaths(
+    before: ReadonlyArray<TankState>,
+    after: ReadonlyArray<TankState>,
+  ): void {
+    for (const tank of after) {
+      if (!tank.alive && before[tank.id].alive && !this.botStatus[tank.id].crashed) {
+        try {
+          this.runtime.destroyBot(tank.id)
+        } catch (error) {
+          this.log({ botId: tank.id, text: describeError(error), kind: 'err' })
+        }
+      }
+    }
+  }
+}
+
+function buildBotState(
+  state: SimState,
+  tank: TankState,
+  reading: SensorReading,
+  aliveCount: number,
+): Record<string, unknown> {
+  const events = state.events[tank.id]
+  return {
+    tick: state.tick,
+    alive_count: aliveCount,
+    me: {
+      x: tank.x,
+      y: tank.y,
+      heading: tank.heading * RAD_TO_DEG,
+      turret_heading: tank.turretHeading * RAD_TO_DEG,
+      turret_relative: (tank.turretHeading - tank.heading) * RAD_TO_DEG,
+      speed: tank.speed,
+      hp: tank.hp,
+      cooldown: tank.cooldown / TICK_RATE,
+    },
+    sensor: {
+      tanks: reading.tanks.map((t) => ({
+        id: t.id,
+        distance: t.distance,
+        bearing: t.bearing * RAD_TO_DEG,
+        heading: t.heading * RAD_TO_DEG,
+        speed: t.speed,
+      })),
+      obstacles: reading.obstacles.map((o) => ({
+        distance: o.distance,
+        bearing: o.bearing * RAD_TO_DEG,
+        rect: o.rect,
+      })),
+      wall: reading.wall
+        ? { distance: reading.wall.distance, bearing: reading.wall.bearing * RAD_TO_DEG }
+        : null,
+    },
+    events: {
+      hit_by_shell: events.hitByShell.map((e) => ({
+        damage: e.damage,
+        bearing: e.bearing * RAD_TO_DEG,
+      })),
+      shell_hit_enemy: events.shellHitEnemy.map((e) => ({ target_id: e.targetId })),
+      collisions: events.collisions.map((e) => ({
+        kind: e.kind,
+        bearing: e.bearing * RAD_TO_DEG,
+      })),
+      enemies_destroyed: events.enemiesDestroyed.map((e) => ({ id: e.id })),
+    },
+  }
+}
+
+function describeError(error: unknown): string {
+  if (error instanceof Error) return error.message
+  return String(error)
+}
