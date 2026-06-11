@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "blockly": "^12.5.1",
     "phaser": "^4.1.0"
   },
   "devDependencies": {

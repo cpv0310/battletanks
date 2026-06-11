@@ -26,10 +26,27 @@ describe('script storage', () => {
     expect(loadSavedScripts(storage)).toEqual([])
   })
 
-  it('saves and reloads a script', () => {
+  it('saves and reloads a script (defaults to code mode)', () => {
     saveScript(storage, 'My Bot', 'print("hi")', 1000)
     expect(loadSavedScripts(storage)).toEqual([
-      { name: 'My Bot', source: 'print("hi")', updatedAt: 1000 },
+      { name: 'My Bot', source: 'print("hi")', updatedAt: 1000, mode: 'code', blocks: null },
+    ])
+  })
+
+  it('persists blocks mode and workspace JSON', () => {
+    saveScript(storage, 'Blocky', 'generated', 1000, { mode: 'blocks', blocks: '{"blocks":{}}' })
+    const [script] = loadSavedScripts(storage)
+    expect(script.mode).toBe('blocks')
+    expect(script.blocks).toBe('{"blocks":{}}')
+  })
+
+  it('normalizes legacy entries without mode/blocks fields', () => {
+    storage.setItem(
+      'battletanks.scripts.v1',
+      JSON.stringify([{ name: 'Old', source: 'x', updatedAt: 5 }]),
+    )
+    expect(loadSavedScripts(storage)).toEqual([
+      { name: 'Old', source: 'x', updatedAt: 5, mode: 'code', blocks: null },
     ])
   })
 

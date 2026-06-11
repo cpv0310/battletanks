@@ -1,6 +1,8 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import { loadPyodide } from 'pyodide'
 import { TANK_FORWARD_SPEED, TANK_HP } from '../config'
+import { blocksJsonToPython } from '../blocks/generator'
+import { BRAWLER_BLOCKS_JSON, STARTER_BLOCKS_JSON } from '../blocks/sample'
 import type { LogEntry } from './protocol'
 import { MatchEngine, type PythonRuntime } from './engine'
 import { createPythonRuntime, type PyodideLike } from './pyRuntime'
@@ -175,6 +177,19 @@ describe('MatchEngine with real Pyodide', () => {
     expect(output.some((entry) => entry.text.includes('STUCK'))).toBe(true)
     expect(output.some((entry) => entry.text.includes('ESCAPED'))).toBe(true)
     expect(engine.snapshot().botStatus[0].crashed).toBe(false)
+  })
+
+  it('block-generated bots load and fight without crashing', { timeout: 120_000 }, () => {
+    const { engine } = makeEngine([
+      { name: 'brawler', script: blocksJsonToPython(BRAWLER_BLOCKS_JSON) },
+      { name: 'starter', script: blocksJsonToPython(STARTER_BLOCKS_JSON) },
+    ])
+    engine.advance(900)
+    const snapshot = engine.snapshot()
+    expect(snapshot.botStatus.every((status) => !status.crashed && !status.inert)).toBe(true)
+    // The brawler drives and spins its turret, so it must have moved.
+    const brawler = snapshot.sim.tanks[0]
+    expect(brawler.x !== 600 || brawler.y !== 500).toBe(true)
   })
 
   it('all four sample bots run a battle without crashing', { timeout: 120_000 }, () => {

@@ -63,11 +63,59 @@ body {
 /* --- setup panel ----------------------------------------------------- */
 
 .setup-panel {
-  width: 520px;
+  width: 760px;
+  flex-shrink: 0;
   max-width: 100%;
   margin: 0 auto;
   padding: 16px;
   overflow-y: auto;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.mode-toggle {
+  display: inline-flex;
+  margin-left: auto;
+}
+
+.btn-mode {
+  border-radius: 0;
+}
+
+.btn-mode:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.btn-mode:last-child {
+  border-radius: 0 4px 4px 0;
+  border-left: none;
+}
+
+.btn-mode-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0c130d;
+  font-weight: 600;
+}
+
+.btn-mode-active:hover:not(:disabled) {
+  background: var(--accent);
+}
+
+.blocks-host {
+  width: 100%;
+  height: 460px;
+  margin-top: 8px;
+  border: 1px solid var(--panel-edge);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.input-name {
+  flex: 1;
+  min-width: 0;
 }
 
 .setup-panel h2 {

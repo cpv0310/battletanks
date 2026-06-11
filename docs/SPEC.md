@@ -210,6 +210,14 @@ the tank's maximum. Invalid values are clamped, never errors.
 
 - **Setup screen:** add 2–8 players; for each, load a `.py` file or paste into a
   code editor; choose map preset or seed; start match.
+- **Visual programming:** every script has a **Code / Blocks** editing-mode
+  toggle. Blocks mode is a drag-and-drop Blockly workspace with tank-specific
+  blocks — events (*every tick*, *when I see an enemy*, *when I get hit*,
+  *when I touch a wall*, *when I am stuck*), actions (drive, turn, spin/aim
+  turret, chase, fire, say), and logic (if / if-else plus conditions like
+  *enemy is closer than N px*, *turret is aimed*, *cannon is ready*, *HP below
+  N*, *% chance*). Block programs compile to Python bots (visible via the Code
+  toggle) and save to the script library alongside hand-written scripts.
 - **Battle view:** Phaser renders the 1200 × 1000 arena (scaled to fit), tanks
   with visible hull/turret orientation, shells, obstacles, and an optional
   sensor-arc overlay for debugging.

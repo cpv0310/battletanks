@@ -2,14 +2,19 @@ import { MAX_PLAYERS, MIN_PLAYERS, TANK_COLORS } from '../config'
 import { MAP_KINDS, type MapKind } from '../core/arena'
 import { SAMPLE_SCRIPTS } from '../bots/samples'
 import type { PlayerConfig } from '../bots/protocol'
+import { BlocksEditor } from '../blocks/editor'
+import { blocksJsonToPython } from '../blocks/generator'
+import { BRAWLER_BLOCKS_JSON, STARTER_BLOCKS_JSON } from '../blocks/sample'
 import { button, el, option } from './dom'
-import { deleteScript, loadSavedScripts, saveScript } from './storage'
+import { deleteScript, loadSavedScripts, saveScript, type ScriptMode } from './storage'
 
 interface LibraryEntry {
   id: string
   name: string
   source: string
   kind: 'sample' | 'saved'
+  mode: ScriptMode
+  blocksJson: string | null
 }
 
 interface PlayerRow {
@@ -24,9 +29,10 @@ export interface MatchSetup {
 }
 
 /**
- * Setup screen: script library (samples + scripts saved in localStorage, with
- * an editor), player roster, and match settings. Edits live in working copies,
- * so an unsaved tweak still applies to the next battle; Save persists it.
+ * Setup screen: script library (samples + scripts saved in localStorage),
+ * a per-script Code/Blocks editing mode toggle (textarea vs. drag-and-drop
+ * Blockly workspace that compiles to Python), player roster, and match
+ * settings. Edits live in working copies; Save persists them.
  */
 export class SetupPanel {
   readonly root: HTMLElement
@@ -34,9 +40,13 @@ export class SetupPanel {
   private library: LibraryEntry[] = []
   private players: PlayerRow[] = []
   private selectedId = ''
+  private blocksEditor: BlocksEditor | null = null
 
   private librarySelect!: HTMLSelectElement
+  private codeModeButton!: HTMLButtonElement
+  private blocksModeButton!: HTMLButtonElement
   private editor!: HTMLTextAreaElement
+  private blocksHost!: HTMLElement
   private nameInput!: HTMLInputElement
   private deleteButton!: HTMLButtonElement
   private statusLine!: HTMLElement
@@ -58,19 +68,40 @@ export class SetupPanel {
     this.refresh()
   }
 
-  private reloadLibrary(): void {
-    const working = new Map(this.library.map((entry) => [entry.id, entry.source]))
-    const samples: LibraryEntry[] = SAMPLE_SCRIPTS.map((sample) => ({
+  private sampleEntries(): LibraryEntry[] {
+    const codeSamples: LibraryEntry[] = SAMPLE_SCRIPTS.map((sample) => ({
       id: `sample:${sample.name}`,
       name: sample.name,
-      source: working.get(`sample:${sample.name}`) ?? sample.source,
+      source: sample.source,
       kind: 'sample',
+      mode: 'code',
+      blocksJson: null,
     }))
+    return [
+      ...codeSamples,
+      {
+        id: 'sample:Block Brawler',
+        name: 'Block Brawler',
+        source: blocksJsonToPython(BRAWLER_BLOCKS_JSON),
+        kind: 'sample',
+        mode: 'blocks',
+        blocksJson: BRAWLER_BLOCKS_JSON,
+      },
+    ]
+  }
+
+  private reloadLibrary(): void {
+    const working = new Map(this.library.map((entry) => [entry.id, entry]))
+    const samples = this.sampleEntries().map(
+      (fresh) => working.get(fresh.id) ?? fresh,
+    )
     const saved: LibraryEntry[] = loadSavedScripts(localStorage).map((script) => ({
       id: `saved:${script.name}`,
       name: script.name,
       source: script.source,
       kind: 'saved',
+      mode: script.mode,
+      blocksJson: script.blocks,
     }))
     this.library = [...samples, ...saved]
   }
@@ -82,6 +113,9 @@ export class SetupPanel {
       this.refresh()
     })
 
+    this.codeModeButton = button('Code', () => this.switchMode('code'), 'btn btn-mode')
+    this.blocksModeButton = button('Blocks', () => this.switchMode('blocks'), 'btn btn-mode')
+
     this.editor = el('textarea', { className: 'editor' })
     this.editor.spellcheck = false
     this.editor.addEventListener('input', () => {
@@ -89,7 +123,9 @@ export class SetupPanel {
       if (entry) entry.source = this.editor.value
     })
 
-    this.nameInput = el('input', { className: 'input' })
+    this.blocksHost = el('div', { className: 'blocks-host hidden' })
+
+    this.nameInput = el('input', { className: 'input input-name' })
     this.nameInput.placeholder = 'Script name'
     this.deleteButton = button('Delete', () => this.handleDelete(), 'btn btn-danger')
     this.statusLine = el('div', { className: 'hint' })
@@ -108,8 +144,12 @@ export class SetupPanel {
 
     return el('div', { className: 'setup-panel' }, [
       el('h2', { text: 'Scripts' }),
-      this.librarySelect,
+      el('div', { className: 'row' }, [
+        this.librarySelect,
+        el('span', { className: 'mode-toggle' }, [this.codeModeButton, this.blocksModeButton]),
+      ]),
       this.editor,
+      this.blocksHost,
       el('div', { className: 'row' }, [
         this.nameInput,
         button('Save', () => this.handleSave()),
@@ -138,22 +178,64 @@ export class SetupPanel {
     return this.library.find((entry) => entry.id === this.selectedId)
   }
 
+  private switchMode(mode: ScriptMode): void {
+    const entry = this.selected()
+    if (!entry || entry.mode === mode) return
+    entry.mode = mode
+    if (mode === 'blocks' && entry.blocksJson === null) {
+      entry.blocksJson = STARTER_BLOCKS_JSON
+      entry.source = blocksJsonToPython(STARTER_BLOCKS_JSON)
+    }
+    this.refresh()
+  }
+
+  private ensureBlocksEditor(): BlocksEditor {
+    if (!this.blocksEditor) {
+      this.blocksEditor = new BlocksEditor(this.blocksHost, () => this.handleBlocksChange())
+    }
+    return this.blocksEditor
+  }
+
+  private handleBlocksChange(): void {
+    const entry = this.selected()
+    if (!entry || entry.mode !== 'blocks' || !this.blocksEditor) return
+    entry.blocksJson = this.blocksEditor.toJson()
+    entry.source = this.blocksEditor.toPython()
+  }
+
   private refresh(): void {
     this.librarySelect.replaceChildren()
     for (const entry of this.library) {
-      const label = entry.kind === 'sample' ? `Sample: ${entry.name}` : entry.name
-      this.librarySelect.append(option(entry.id, label))
+      this.librarySelect.append(option(entry.id, entryLabel(entry)))
     }
     const entry = this.selected() ?? this.library[0]
     this.selectedId = entry.id
     this.librarySelect.value = entry.id
-    this.editor.value = entry.source
     this.nameInput.value = entry.kind === 'sample' ? `My ${entry.name}` : entry.name
     this.deleteButton.disabled = entry.kind === 'sample'
-    this.statusLine.textContent =
-      entry.kind === 'sample'
-        ? 'Samples are built in — edits apply to the next battle; Save stores your copy.'
-        : 'Saved in this browser (localStorage).'
+
+    const blocksMode = entry.mode === 'blocks'
+    this.codeModeButton.classList.toggle('btn-mode-active', !blocksMode)
+    this.blocksModeButton.classList.toggle('btn-mode-active', blocksMode)
+    this.editor.classList.toggle('hidden', blocksMode)
+    this.blocksHost.classList.toggle('hidden', !blocksMode)
+
+    if (blocksMode) {
+      const editor = this.ensureBlocksEditor()
+      editor.load(entry.blocksJson)
+      editor.resize()
+      this.statusLine.textContent =
+        'Drag blocks from the toolbox to build your tank. The blocks compile to Python ' +
+        '(flip to Code to see it) and Save stores them in this browser.'
+    } else {
+      this.editor.value = entry.source
+      this.statusLine.textContent =
+        entry.blocksJson !== null
+          ? 'Generated from blocks — edits here are kept, but flipping back to Blocks rebuilds the code from the blocks.'
+          : entry.kind === 'sample'
+            ? 'Samples are built in — edits apply to the next battle; Save stores your copy.'
+            : 'Saved in this browser (localStorage).'
+    }
     this.renderPlayers()
   }
 
@@ -171,8 +253,7 @@ export class SetupPanel {
 
       const scriptSelect = el('select', { className: 'select' })
       for (const entry of this.library) {
-        const label = entry.kind === 'sample' ? `Sample: ${entry.name}` : entry.name
-        scriptSelect.append(option(entry.id, label))
+        scriptSelect.append(option(entry.id, entryLabel(entry)))
       }
       scriptSelect.value = this.library.some((entry) => entry.id === player.scriptId)
         ? player.scriptId
@@ -209,7 +290,10 @@ export class SetupPanel {
     const entry = this.selected()
     if (!entry) return
     try {
-      saveScript(localStorage, this.nameInput.value, this.editor.value, Date.now())
+      saveScript(localStorage, this.nameInput.value, entry.source, Date.now(), {
+        mode: entry.mode,
+        blocks: entry.mode === 'blocks' ? entry.blocksJson : null,
+      })
       const savedId = `saved:${this.nameInput.value.trim()}`
       this.reloadLibrary()
       this.selectedId = savedId
@@ -224,6 +308,7 @@ export class SetupPanel {
     const entry = this.selected()
     if (!entry || entry.kind !== 'saved') return
     deleteScript(localStorage, entry.name)
+    this.library = this.library.filter((item) => item.id !== entry.id)
     this.reloadLibrary()
     this.selectedId = this.library[0].id
     this.refresh()
@@ -256,6 +341,11 @@ export class SetupPanel {
   private showError(message: string): void {
     this.errorLine.textContent = message
   }
+}
+
+function entryLabel(entry: LibraryEntry): string {
+  const blocks = entry.mode === 'blocks' ? ' ⧉' : ''
+  return entry.kind === 'sample' ? `Sample: ${entry.name}${blocks}` : `${entry.name}${blocks}`
 }
 
 function randomSeed(): number {
