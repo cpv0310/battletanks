@@ -48,6 +48,22 @@ try {
   await page.waitForSelector('.btn-start', { timeout: 10_000 })
   console.log('• setup screen rendered')
 
+  // Save the current script under a new name, reload, and verify it persisted.
+  await page.fill('.setup-panel input.input:not(.input-seed):not(.input-player)', 'SmokeTestBot')
+  await page.click('.setup-panel button:has-text("Save")')
+  await page.reload({ waitUntil: 'load' })
+  await page.waitForSelector('.btn-start', { timeout: 10_000 })
+  const savedVisible = await page.evaluate(() =>
+    [...document.querySelectorAll('.setup-panel select option')].some(
+      (option) => option.textContent === 'SmokeTestBot',
+    ),
+  )
+  if (savedVisible) {
+    console.log('• script saved to library and survived a reload')
+  } else {
+    fail('saved script did not appear in the library after reload')
+  }
+
   await page.click('.btn-start')
   console.log('• battle started, waiting for Python runtime (CDN)…')
 
