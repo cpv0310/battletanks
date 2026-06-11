@@ -43,6 +43,7 @@ export class BattlePanel {
 
     const sensorToggle = el('input', { className: 'checkbox' })
     sensorToggle.type = 'checkbox'
+    sensorToggle.checked = true
     sensorToggle.addEventListener('change', () => handlers.onToggleSensors(sensorToggle.checked))
 
     this.controls = el('div', { className: 'match-controls' }, [

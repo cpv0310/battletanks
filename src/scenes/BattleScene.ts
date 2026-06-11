@@ -9,7 +9,8 @@ import {
   TANK_WIDTH,
 } from '../config'
 import type { Snapshot } from '../bots/protocol'
-import type { TankState } from '../core/types'
+import { senseAll } from '../core/sensor'
+import type { SensorReading, TankState } from '../core/types'
 
 const COLOR_BACKGROUND = 0x20242b
 const COLOR_OBSTACLE = 0x4a5160
@@ -22,7 +23,7 @@ export class BattleScene extends Phaser.Scene {
   private graphics!: Phaser.GameObjects.Graphics
   private labels: Phaser.GameObjects.Text[] = []
   private snapshot: Snapshot | null = null
-  private showSensors = false
+  private showSensors = true
 
   /** Called once per rendered frame; the app uses it to pace the simulation. */
   onFrame: (() => void) | null = null
@@ -79,13 +80,20 @@ export class BattleScene extends Phaser.Scene {
       g.strokeRect(rect.x, rect.y, rect.width, rect.height)
     }
 
+    // Recompute detections from the same pure sensor model the bots use.
+    const readings = this.showSensors ? senseAll(sim) : null
+
+    for (const tank of sim.tanks) {
+      if (!tank.alive) continue
+      if (readings) this.drawSensorZone(tank)
+    }
     for (const tank of sim.tanks) {
       const label = this.labels[tank.id]
       if (!tank.alive) {
         label?.setVisible(false)
         continue
       }
-      if (this.showSensors) this.drawSensor(tank)
+      if (readings) this.drawDetections(tank, readings[tank.id])
       this.drawTank(tank)
       if (label) {
         label.setVisible(true)
@@ -134,19 +142,51 @@ export class BattleScene extends Phaser.Scene {
     g.fillRect(tank.x - 20, tank.y - 30, 40 * ratio, 4)
   }
 
-  private drawSensor(tank: TankState): void {
+  /** Translucent 90° wedge showing where this tank's sensor can see. */
+  private drawSensorZone(tank: TankState): void {
     const g = this.graphics
     const color = TANK_COLORS[tank.id] ?? 0xffffff
-    g.fillStyle(color, 0.06)
-    g.slice(
-      tank.x,
-      tank.y,
-      SENSOR_RANGE,
-      tank.turretHeading - SENSOR_ARC / 2,
-      tank.turretHeading + SENSOR_ARC / 2,
-      false,
-    )
+    const start = tank.turretHeading - SENSOR_ARC / 2
+    const end = tank.turretHeading + SENSOR_ARC / 2
+    g.fillStyle(color, 0.07)
+    g.slice(tank.x, tank.y, SENSOR_RANGE, start, end, false)
     g.fillPath()
+    g.lineStyle(1.5, color, 0.35)
+    g.slice(tank.x, tank.y, SENSOR_RANGE, start, end, false)
+    g.strokePath()
+  }
+
+  /** Highlight everything this tank's sensor currently detects. */
+  private drawDetections(tank: TankState, reading: SensorReading): void {
+    const g = this.graphics
+    const color = TANK_COLORS[tank.id] ?? 0xffffff
+    // Stagger highlight sizes per sensing tank so overlapping markers from
+    // several sensors stay distinguishable.
+    const pad = (tank.id % 4) * 3
+
+    for (const detection of reading.tanks) {
+      const target = this.snapshot?.sim.tanks[detection.id]
+      if (!target) continue
+      g.lineStyle(1.5, color, 0.55)
+      g.lineBetween(tank.x, tank.y, target.x, target.y)
+      g.lineStyle(2.5, color, 0.95)
+      g.strokeCircle(target.x, target.y, 26 + pad)
+    }
+
+    for (const detection of reading.obstacles) {
+      const { rect } = detection
+      g.lineStyle(2, color, 0.8)
+      g.strokeRect(rect.x - 2 - pad, rect.y - 2 - pad, rect.width + 4 + pad * 2, rect.height + 4 + pad * 2)
+    }
+
+    if (reading.wall) {
+      const wx = tank.x + Math.cos(tank.turretHeading) * reading.wall.distance
+      const wy = tank.y + Math.sin(tank.turretHeading) * reading.wall.distance
+      g.lineStyle(1.5, color, 0.4)
+      g.lineBetween(tank.x, tank.y, wx, wy)
+      g.fillStyle(color, 0.95)
+      g.fillCircle(wx, wy, 5)
+    }
   }
 }
 
