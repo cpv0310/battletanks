@@ -2,6 +2,8 @@
 import { defineConfig } from 'vite'
 
 export default defineConfig({
+  // Served from https://cpv0310.github.io/battletanks/ — assets must resolve under this subpath
+  base: '/battletanks/',
   worker: {
     format: 'es',
   },
